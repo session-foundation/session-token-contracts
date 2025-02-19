@@ -437,15 +437,16 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
         // This allows them to refund any other tokens that might have
         // mistakenly been sent throughout the lifetime of the contract without
         // giving them access to contributor tokens.
-        if (status != Status.Finalized && status == Status.WaitForOperatorContrib)
+        if (status == Status.Finalized || status == Status.WaitForOperatorContrib) {
+            IERC20 token = IERC20(tokenAddress);
+            uint256 balance = token.balanceOf(address(this));
+            if (balance <= 0)
+                revert RescueBalanceIsEmpty(tokenAddress);
+            token.safeTransfer(operator, balance);
+        } else {
             revert RescueNotPossible(status);
+        }
 
-        IERC20 token = IERC20(tokenAddress);
-        uint256 balance = token.balanceOf(address(this));
-        if (balance <= 0)
-            revert RescueBalanceIsEmpty(tokenAddress);
-
-        token.safeTransfer(operator, balance);
     }
 
     function withdrawContribution() external {

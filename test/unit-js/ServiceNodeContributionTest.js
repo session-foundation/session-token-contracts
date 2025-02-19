@@ -338,6 +338,40 @@ describe("ServiceNodeContribution Contract Tests", function () {
                  .to.equal(1);
          });
 
+         it("Should be able to rescue before operator contribution", async function () {
+             const [owner, contributor1, contributor2] = await ethers.getSigners();
+
+             // NOTE: Transfer tokens to the contract before operator contributed
+             await seshToken.transfer(snContribution, TEST_AMNT);
+
+             // NOTE: Check contributors can't rescue the token
+             await expect(snContribution.connect(contributor1)
+                                        .rescueERC20(seshToken)).to.be.reverted;
+             await expect(snContribution.connect(contributor2)
+                                        .rescueERC20(seshToken)).to.be.reverted;
+
+             // NOTE: Check that the operator can rescue the tokens
+             const balanceBefore = await seshToken.balanceOf(owner);
+             expect(await snContribution.connect(owner)
+                                        .rescueERC20(seshToken));
+
+             // NOTE: Verify the balances
+             const balanceAfter         = await seshToken.balanceOf(owner);
+             const contractBalanceAfter = await seshToken.balanceOf(snContribution);
+             expect(balanceBefore + BigInt(TEST_AMNT)).to.equal(balanceAfter);
+             expect(contractBalanceAfter).to.equal(BigInt(0));
+
+             // NOTE: Tokes are rescued, contract is empty, test that no
+             // one can rescue, not even the operator (because the
+             // balance of the contract is empty).
+             await expect(snContribution.connect(contributor1)
+                                        .rescueERC20(seshToken)).to.be.reverted;
+             await expect(snContribution.connect(contributor2)
+                                        .rescueERC20(seshToken)).to.be.reverted;
+             await expect(snContribution.connect(owner)
+                                        .rescueERC20(seshToken)).to.be.reverted;
+         });
+
          describe("After operator has set up funds", function () {
              beforeEach(async function () {
                  const [owner]         = await ethers.getSigners();
@@ -625,6 +659,20 @@ describe("ServiceNodeContribution Contract Tests", function () {
                  await seshToken.connect(contributor).approve(snContribution, stakingRequirement - previousContribution + BigInt(1));
                  await expect(snContribution.connect(contributor).contributeFunds(stakingRequirement - previousContribution + BigInt(1), beneficiaryData))
                      .to.be.revertedWithCustomError(snContribution, "ContributionExceedsStakingRequirement");
+             });
+
+             it("Should not be able to rescue before finalisation", async function () {
+                 const [owner, contributor1, contributor2] = await ethers.getSigners();
+
+                 // NOTE: Check contributors can't rescue the token
+                 await expect(snContribution.connect(contributor1)
+                                            .rescueERC20(seshToken)).to.be.reverted;
+                 await expect(snContribution.connect(contributor2)
+                                            .rescueERC20(seshToken)).to.be.reverted;
+
+                 // NOTE: Check that the operator can't rescue the tokens
+                 await expect(snContribution.connect(owner).rescueERC20(seshToken))
+                     .to.be.reverted;
              });
 
              describe("Turn off auto-finalize, fill node", async function () {
