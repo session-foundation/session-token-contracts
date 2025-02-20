@@ -251,31 +251,6 @@ interface IServiceNodeContribution {
                                       address beneficiary,
                                       uint256 amount) external;
 
-    /// @notice Helper function that updates the fee, reserved contributors,
-    /// manual finalization and contribution of the node.
-    ///
-    /// This function is equivalent to calling in sequence:
-    ///
-    ///   - `reset`
-    ///   - `updateFee`
-    ///   - `updateReservedContributors`
-    ///   - `updateManualFinalize`
-    ///   - `contributeFunds`
-    ///
-    /// If reserved contributors are not desired, the empty array is accepted.
-    ///
-    /// If the operator wishes to withhold their initial contribution, a `0`
-    /// amount is accepted. When a `0` amount is specified, `beneficiary` is
-    /// also ignored.
-    ///
-    /// @dev Useful to conduct exactly 1 transaction to re-use a node with new
-    /// contributors and maintain the same keys for the node after
-    /// a deregistration or exit.
-    function resetUpdateFeeReservedAndContribute(uint16 fee,
-                                                 IServiceNodeRewards.ReservedContributor[] memory reserved,
-                                                 bool _manualFinalize,
-                                                 address beneficiary,
-                                                 uint256 amount) external;
 
     /// @notice Function to allow owner to rescue any ERC20 tokens sent to the
     /// contract after it has been finalized.

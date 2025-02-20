@@ -410,19 +410,6 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
             _contributeFunds(operator, beneficiary, amount);
     }
 
-    function resetUpdateFeeReservedAndContribute(uint16 fee,
-                                                 IServiceNodeRewards.ReservedContributor[] memory reserved,
-                                                 bool _manualFinalize,
-                                                 address beneficiary,
-                                                 uint256 amount) external onlyOperator {
-        _reset();
-        _updateFee(fee);
-        _updateReservedContributors(reserved);
-        _updateManualFinalize(_manualFinalize);
-        if (amount > 0)
-            _contributeFunds(operator, beneficiary, amount);
-    }
-
     function rescueERC20(address tokenAddress) external onlyOperator {
         // NOTE: ERC20 tokens sent to the contract can only be rescued after the
         // contract is finalized or the contract has been reset
