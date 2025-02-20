@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const {getContractEvent} = require("./util");
 
 // NOTE: Constants
 const STAKING_TEST_AMNT = 15000000000000
@@ -183,8 +184,9 @@ describe("ServiceNodeContribution Contract Tests", function () {
 
             // NOTE: Get TX logs to determine contract address
             const receipt                  = await tx.wait();
-            const event                    = receipt.logs[0];
-            expect(event.eventName).to.equal("NewServiceNodeContributionContract");
+            const event                    = getContractEvent(receipt.logs, "NewServiceNodeContributionContract");
+
+            expect(event).not.to.be.undefined;
 
             // NOTE: Get deployed contract address
             snContributionAddress = event.args[0]; // This should be the address of the newly deployed contract
@@ -932,7 +934,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
                                                         false /*manualFinalize*/);
 
             const receipt = await tx.wait();
-            const event = receipt.logs[0];
+            const event = getContractEvent(receipt.logs, "NewServiceNodeContributionContract");
             snContributionAddress = event.args[0];
             snContribution = await ethers.getContractAt("ServiceNodeContribution", snContributionAddress);
 
@@ -1080,7 +1082,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
                                                           false /*manualFinalize*/);
 
             const receipt         = await tx.wait();
-            const event           = receipt.logs[0];
+            const event           = getContractEvent(receipt.logs, "NewServiceNodeContributionContract");
             snContributionAddress = event.args[0];
             snContribution        = await ethers.getContractAt("ServiceNodeContribution", snContributionAddress);
 
@@ -1279,7 +1281,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
                                                           false /*manualFinalize*/);
 
             const receipt = await tx.wait();
-            const event = receipt.logs[0];
+            const event = getContractEvent(receipt.logs, "NewServiceNodeContributionContract");
             const snContributionAddress = event.args[0];
             snContribution = await ethers.getContractAt("ServiceNodeContribution", snContributionAddress);
 
