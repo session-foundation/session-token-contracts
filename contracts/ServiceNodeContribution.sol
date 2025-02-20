@@ -60,7 +60,7 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
     // a public contributor fulfills the node).
     bool public manualFinalize;
 
-    // Modifers
+    // Modifiers
     modifier onlyOperator() {
         if (msg.sender != operator)
             revert OnlyOperatorIsAuthorised(msg.sender, operator);
