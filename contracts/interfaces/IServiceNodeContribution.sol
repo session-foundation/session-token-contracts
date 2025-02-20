@@ -40,12 +40,17 @@ interface IServiceNodeContribution {
     //                                                          //
     //////////////////////////////////////////////////////////////
 
-    event Finalized                (uint256 indexed serviceNodePubkey);
-    event NewContribution          (address indexed contributor, uint256 amount);
-    event OpenForPublicContribution(uint256 indexed serviceNodePubkey, address indexed operator, uint16 fee);
-    event Filled                   (uint256 indexed serviceNodePubkey, address indexed operator);
-    event WithdrawContribution     (address indexed contributor, uint256 amount);
-    event UpdateStakerBeneficiary  (address indexed staker, address oldBeneficiary, address newBeneficiary);
+    event Finalized                     ();
+    event NewContribution               (address indexed contributor, uint256 amount);
+    event OpenForPublicContribution     ();
+    event Filled                        ();
+    event WithdrawContribution          (address indexed contributor, uint256 amount);
+    event UpdateStakerBeneficiary       (address indexed staker, address newBeneficiary);
+    event UpdateManualFinalize          (bool newValue);
+    event UpdateFee                     (uint16 newFee);
+    event UpdatePubkeys                 (BN256G1.G1Point indexed newBLSPubkey, uint256 indexed newEd25519Pubkey);
+    event UpdateReservedContributors    (IServiceNodeRewards.ReservedContributor[] newReservedContributors);
+    event Reset                         ();
 
     //////////////////////////////////////////////////////////////
     //                                                          //
