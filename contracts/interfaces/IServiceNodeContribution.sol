@@ -87,7 +87,7 @@ interface IServiceNodeContribution {
     error ContributionExceedsStakingRequirement   (uint256 totalContributed, uint256 totalReserved, uint256 stakingRequirement);
     error DuplicateAddressInReservedContributor   (uint256 index);
     error FeeExceedsPossibleValue                 (uint16 fee, uint16 max);
-    error FeeUpdateNotPossible                    (Status status);
+    error RequireWaitForOperatorContribStatus     (Status status);
     error FinalizeNotPossible                     (Status status);
     error FirstContributionMustBeOperator         (address contributor, address operator);
     error BeneficiaryUpdatingDisabledNodeIsNotOpen(uint256 ed25519Pubkey);
@@ -100,11 +100,9 @@ interface IServiceNodeContribution {
     /// operator
     error OnlyOperatorIsAuthorised                     (address addr, address operator);
     error MaxContributorsExceeded                      (uint256 maxContributors);
-    error PubkeyUpdateNotPossible                      (Status status);
     error RescueBalanceIsEmpty                         (address token);
     error RescueNotPossible                            (Status status);
     error ReservedContributorHasZeroAddress            (uint256 index);
-    error ReservedContributorUpdateNotPossible         (Status status);
     error ReservedContributionBelowMinAmount           (uint256 index, uint256 contributed, uint256 min);
     error ReservedContributionExceedsStakingRequirement(uint256 index, uint256 contributed, uint256 remaining);
 

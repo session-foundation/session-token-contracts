@@ -67,6 +67,12 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
         _;
     }
 
+    modifier requireWaitForOperatorContribStatus() {
+        if (status != Status.WaitForOperatorContrib)
+            revert RequireWaitForOperatorContribStatus(status);
+        _;
+    }
+
     /// @notice Constructs a multi-contribution node contract for the
     /// specified `_stakingRewardsContract`.
     ///
@@ -119,9 +125,7 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
 
     function updateFee(uint16 fee) external onlyOperator { _updateFee(fee); }
 
-    function _updateFee(uint16 fee) private {
-        if (status != Status.WaitForOperatorContrib)
-            revert FeeUpdateNotPossible(status);
+    function _updateFee(uint16 fee) private requireWaitForOperatorContribStatus {
         if (fee > MAX_FEE)
             revert FeeExceedsPossibleValue(fee, MAX_FEE);
         _serviceNodeParams.fee = fee;
@@ -139,10 +143,7 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
                             IServiceNodeRewards.BLSSignatureParams memory newBLSSig,
                             uint256 ed25519Pubkey,
                             uint256 ed25519Sig0,
-                            uint256 ed25519Sig1) private {
-        if (status != Status.WaitForOperatorContrib)
-            revert PubkeyUpdateNotPossible(status);
-
+                            uint256 ed25519Sig1) private requireWaitForOperatorContribStatus {
         stakingRewardsContract.validateProofOfPossession(newBLSPubkey, newBLSSig, operator, ed25519Pubkey);
 
         // NOTE: Update BLS keys
@@ -159,10 +160,7 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
         _updateReservedContributors(reserved);
     }
 
-    function _updateReservedContributors(IServiceNodeRewards.ReservedContributor[] memory reserved) private {
-        if (status != Status.WaitForOperatorContrib)
-            revert ReservedContributorUpdateNotPossible(status);
-
+    function _updateReservedContributors(IServiceNodeRewards.ReservedContributor[] memory reserved) private requireWaitForOperatorContribStatus {
         // NOTE: Remove old reserved contributions
         {
             uint256 length = reservedContributionsAddresses.length;

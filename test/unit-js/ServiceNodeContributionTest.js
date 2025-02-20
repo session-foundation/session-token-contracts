@@ -1325,7 +1325,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
             await snContribution.connect(snOperator).contributeFunds(minContribution, beneficiaryData);
 
             await expect(snContribution.connect(snOperator).updateFee(1n))
-                .to.be.revertedWithCustomError(snContribution, "FeeUpdateNotPossible");
+                .to.be.revertedWithCustomError(snContribution, "RequireWaitForOperatorContribStatus");
         });
 
         it("Should fail to update pubkeys after another contributor has joined", async function () {
@@ -1340,7 +1340,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
                                                       newNode.snParams.serviceNodePubkey,
                                                       newNode.snParams.serviceNodeSignature1,
                                                       newNode.snParams.serviceNodeSignature2))
-                .to.be.revertedWithCustomError(snContribution, "PubkeyUpdateNotPossible");
+                .to.be.revertedWithCustomError(snContribution, "RequireWaitForOperatorContribStatus");
         });
 
         it("Should fail to update fee after contract is finalized", async function () {
@@ -1352,7 +1352,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
 
             // Try to update fee after finalization
             await expect(snContribution.connect(snOperator).updateFee(1n))
-                .to.be.revertedWithCustomError(snContribution, "FeeUpdateNotPossible");
+                .to.be.revertedWithCustomError(snContribution, "RequireWaitForOperatorContribStatus");
         });
 
         it("Should fail to update pubkey after contract is finalized", async function () {
@@ -1368,7 +1368,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
                                                                           newNode.snParams.serviceNodePubkey,
                                                                           newNode.snParams.serviceNodeSignature1,
                                                                           newNode.snParams.serviceNodeSignature2))
-                .to.be.revertedWithCustomError(snContribution, "PubkeyUpdateNotPossible");
+                .to.be.revertedWithCustomError(snContribution, "RequireWaitForOperatorContribStatus");
         });
 
         it("Should update fee after contract reset", async function () {
