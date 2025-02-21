@@ -6,4 +6,4 @@
        url = https://github.com/session-foundation/ethyl.git
 [submodule "test/cpp/external/bls"]
        path = test/cpp/external/bls
-       url = https://github.com/oxen-io/bls.git
+       url = https://github.com/session-foundation/bls.git
