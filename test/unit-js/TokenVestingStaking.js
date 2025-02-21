@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { time } = require("@nomicfoundation/hardhat-network-helpers");
+const {getContractEvent} = require("./util");
 
 const STAKING_TEST_AMNT = 15000000000000
 const TEST_AMNT = 50000000000000
@@ -249,7 +250,7 @@ describe("TokenVestingStaking Contract Tests", function () {
                                                      /*reserved*/ [],
                                                      false /*manualFinalize*/);
             const receipt                  = await tx.wait();
-            const event                    = receipt.logs.find(log => log.fragment.name === "NewServiceNodeContributionContract");
+            const event                    = getContractEvent(receipt.logs, "NewServiceNodeContributionContract");
             const snContribContractAddress = event.args[0];
             snContribContract              = await ethers.getContractAt("ServiceNodeContribution", snContribContractAddress);
 

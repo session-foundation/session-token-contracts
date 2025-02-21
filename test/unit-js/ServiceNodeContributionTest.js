@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const {getContractEvent} = require("./util");
 
 // NOTE: Constants
 const STAKING_TEST_AMNT = 15000000000000
@@ -183,8 +184,9 @@ describe("ServiceNodeContribution Contract Tests", function () {
 
             // NOTE: Get TX logs to determine contract address
             const receipt                  = await tx.wait();
-            const event                    = receipt.logs[0];
-            expect(event.eventName).to.equal("NewServiceNodeContributionContract");
+            const event                    = getContractEvent(receipt.logs, "NewServiceNodeContributionContract");
+
+            expect(event).not.to.be.undefined;
 
             // NOTE: Get deployed contract address
             snContributionAddress = event.args[0]; // This should be the address of the newly deployed contract
@@ -336,6 +338,40 @@ describe("ServiceNodeContribution Contract Tests", function () {
                  .to.equal(minContribution);
              await expect(await snContribution.contributorAddressesLength())
                  .to.equal(1);
+         });
+
+         it("Should be able to rescue before operator contribution", async function () {
+             const [owner, contributor1, contributor2] = await ethers.getSigners();
+
+             // NOTE: Transfer tokens to the contract before operator contributed
+             await seshToken.transfer(snContribution, TEST_AMNT);
+
+             // NOTE: Check contributors can't rescue the token
+             await expect(snContribution.connect(contributor1)
+                                        .rescueERC20(seshToken)).to.be.reverted;
+             await expect(snContribution.connect(contributor2)
+                                        .rescueERC20(seshToken)).to.be.reverted;
+
+             // NOTE: Check that the operator can rescue the tokens
+             const balanceBefore = await seshToken.balanceOf(owner);
+             expect(await snContribution.connect(owner)
+                                        .rescueERC20(seshToken));
+
+             // NOTE: Verify the balances
+             const balanceAfter         = await seshToken.balanceOf(owner);
+             const contractBalanceAfter = await seshToken.balanceOf(snContribution);
+             expect(balanceBefore + BigInt(TEST_AMNT)).to.equal(balanceAfter);
+             expect(contractBalanceAfter).to.equal(BigInt(0));
+
+             // NOTE: Tokes are rescued, contract is empty, test that no
+             // one can rescue, not even the operator (because the
+             // balance of the contract is empty).
+             await expect(snContribution.connect(contributor1)
+                                        .rescueERC20(seshToken)).to.be.reverted;
+             await expect(snContribution.connect(contributor2)
+                                        .rescueERC20(seshToken)).to.be.reverted;
+             await expect(snContribution.connect(owner)
+                                        .rescueERC20(seshToken)).to.be.reverted;
          });
 
          describe("After operator has set up funds", function () {
@@ -627,6 +663,20 @@ describe("ServiceNodeContribution Contract Tests", function () {
                      .to.be.revertedWithCustomError(snContribution, "ContributionExceedsStakingRequirement");
              });
 
+             it("Should not be able to rescue before finalisation", async function () {
+                 const [owner, contributor1, contributor2] = await ethers.getSigners();
+
+                 // NOTE: Check contributors can't rescue the token
+                 await expect(snContribution.connect(contributor1)
+                                            .rescueERC20(seshToken)).to.be.reverted;
+                 await expect(snContribution.connect(contributor2)
+                                            .rescueERC20(seshToken)).to.be.reverted;
+
+                 // NOTE: Check that the operator can't rescue the tokens
+                 await expect(snContribution.connect(owner).rescueERC20(seshToken))
+                     .to.be.reverted;
+             });
+
              describe("Turn off auto-finalize, fill node", async function () {
                  beforeEach(async function () {
                      // NOTE: Turn off auto-finalize
@@ -884,7 +934,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
                                                         false /*manualFinalize*/);
 
             const receipt = await tx.wait();
-            const event = receipt.logs[0];
+            const event = getContractEvent(receipt.logs, "NewServiceNodeContributionContract");
             snContributionAddress = event.args[0];
             snContribution = await ethers.getContractAt("ServiceNodeContribution", snContributionAddress);
 
@@ -1032,7 +1082,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
                                                           false /*manualFinalize*/);
 
             const receipt         = await tx.wait();
-            const event           = receipt.logs[0];
+            const event           = getContractEvent(receipt.logs, "NewServiceNodeContributionContract");
             snContributionAddress = event.args[0];
             snContribution        = await ethers.getContractAt("ServiceNodeContribution", snContributionAddress);
 
@@ -1231,7 +1281,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
                                                           false /*manualFinalize*/);
 
             const receipt = await tx.wait();
-            const event = receipt.logs[0];
+            const event = getContractEvent(receipt.logs, "NewServiceNodeContributionContract");
             const snContributionAddress = event.args[0];
             snContribution = await ethers.getContractAt("ServiceNodeContribution", snContributionAddress);
 
@@ -1277,7 +1327,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
             await snContribution.connect(snOperator).contributeFunds(minContribution, beneficiaryData);
 
             await expect(snContribution.connect(snOperator).updateFee(1n))
-                .to.be.revertedWithCustomError(snContribution, "FeeUpdateNotPossible");
+                .to.be.revertedWithCustomError(snContribution, "RequireWaitForOperatorContribStatus");
         });
 
         it("Should fail to update pubkeys after another contributor has joined", async function () {
@@ -1292,7 +1342,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
                                                       newNode.snParams.serviceNodePubkey,
                                                       newNode.snParams.serviceNodeSignature1,
                                                       newNode.snParams.serviceNodeSignature2))
-                .to.be.revertedWithCustomError(snContribution, "PubkeyUpdateNotPossible");
+                .to.be.revertedWithCustomError(snContribution, "RequireWaitForOperatorContribStatus");
         });
 
         it("Should fail to update fee after contract is finalized", async function () {
@@ -1304,7 +1354,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
 
             // Try to update fee after finalization
             await expect(snContribution.connect(snOperator).updateFee(1n))
-                .to.be.revertedWithCustomError(snContribution, "FeeUpdateNotPossible");
+                .to.be.revertedWithCustomError(snContribution, "RequireWaitForOperatorContribStatus");
         });
 
         it("Should fail to update pubkey after contract is finalized", async function () {
@@ -1320,7 +1370,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
                                                                           newNode.snParams.serviceNodePubkey,
                                                                           newNode.snParams.serviceNodeSignature1,
                                                                           newNode.snParams.serviceNodeSignature2))
-                .to.be.revertedWithCustomError(snContribution, "PubkeyUpdateNotPossible");
+                .to.be.revertedWithCustomError(snContribution, "RequireWaitForOperatorContribStatus");
         });
 
         it("Should update fee after contract reset", async function () {

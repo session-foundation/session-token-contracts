@@ -40,12 +40,17 @@ interface IServiceNodeContribution {
     //                                                          //
     //////////////////////////////////////////////////////////////
 
-    event Finalized                (uint256 indexed serviceNodePubkey);
-    event NewContribution          (address indexed contributor, uint256 amount);
-    event OpenForPublicContribution(uint256 indexed serviceNodePubkey, address indexed operator, uint16 fee);
-    event Filled                   (uint256 indexed serviceNodePubkey, address indexed operator);
-    event WithdrawContribution     (address indexed contributor, uint256 amount);
-    event UpdateStakerBeneficiary  (address indexed staker, address oldBeneficiary, address newBeneficiary);
+    event Finalized                     ();
+    event NewContribution               (address indexed contributor, uint256 amount);
+    event OpenForPublicContribution     ();
+    event Filled                        ();
+    event WithdrawContribution          (address indexed contributor, uint256 amount);
+    event UpdateStakerBeneficiary       (address indexed staker, address newBeneficiary);
+    event UpdateManualFinalize          (bool newValue);
+    event UpdateFee                     (uint16 newFee);
+    event UpdatePubkeys                 (BN256G1.G1Point indexed newBLSPubkey, uint256 indexed newEd25519Pubkey);
+    event UpdateReservedContributors    (IServiceNodeRewards.ReservedContributor[] newReservedContributors);
+    event Reset                         ();
 
     //////////////////////////////////////////////////////////////
     //                                                          //
@@ -87,7 +92,7 @@ interface IServiceNodeContribution {
     error ContributionExceedsStakingRequirement   (uint256 totalContributed, uint256 totalReserved, uint256 stakingRequirement);
     error DuplicateAddressInReservedContributor   (uint256 index);
     error FeeExceedsPossibleValue                 (uint16 fee, uint16 max);
-    error FeeUpdateNotPossible                    (Status status);
+    error RequireWaitForOperatorContribStatus     (Status status);
     error FinalizeNotPossible                     (Status status);
     error FirstContributionMustBeOperator         (address contributor, address operator);
     error BeneficiaryUpdatingDisabledNodeIsNotOpen(uint256 ed25519Pubkey);
@@ -100,11 +105,9 @@ interface IServiceNodeContribution {
     /// operator
     error OnlyOperatorIsAuthorised                     (address addr, address operator);
     error MaxContributorsExceeded                      (uint256 maxContributors);
-    error PubkeyUpdateNotPossible                      (Status status);
     error RescueBalanceIsEmpty                         (address token);
     error RescueNotPossible                            (Status status);
     error ReservedContributorHasZeroAddress            (uint256 index);
-    error ReservedContributorUpdateNotPossible         (Status status);
     error ReservedContributionBelowMinAmount           (uint256 index, uint256 contributed, uint256 min);
     error ReservedContributionExceedsStakingRequirement(uint256 index, uint256 contributed, uint256 remaining);
 
@@ -251,31 +254,6 @@ interface IServiceNodeContribution {
                                       address beneficiary,
                                       uint256 amount) external;
 
-    /// @notice Helper function that updates the fee, reserved contributors,
-    /// manual finalization and contribution of the node.
-    ///
-    /// This function is equivalent to calling in sequence:
-    ///
-    ///   - `reset`
-    ///   - `updateFee`
-    ///   - `updateReservedContributors`
-    ///   - `updateManualFinalize`
-    ///   - `contributeFunds`
-    ///
-    /// If reserved contributors are not desired, the empty array is accepted.
-    ///
-    /// If the operator wishes to withhold their initial contribution, a `0`
-    /// amount is accepted. When a `0` amount is specified, `beneficiary` is
-    /// also ignored.
-    ///
-    /// @dev Useful to conduct exactly 1 transaction to re-use a node with new
-    /// contributors and maintain the same keys for the node after
-    /// a deregistration or exit.
-    function resetUpdateFeeReservedAndContribute(uint16 fee,
-                                                 IServiceNodeRewards.ReservedContributor[] memory reserved,
-                                                 bool _manualFinalize,
-                                                 address beneficiary,
-                                                 uint256 amount) external;
 
     /// @notice Function to allow owner to rescue any ERC20 tokens sent to the
     /// contract after it has been finalized.

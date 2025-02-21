@@ -15,7 +15,7 @@ contract ServiceNodeContributionFactory is Initializable, Ownable2StepUpgradeabl
     mapping(address => bool) public deployedContracts;
 
     // Events
-    event NewServiceNodeContributionContract(address indexed contributorContract, uint256 serviceNodePubkey);
+    event NewServiceNodeContributionContract(address indexed contributorContract, uint256 serviceNodePubkey, address operator);
 
     function initialize(address _stakingRewardsContract) public initializer {
         stakingRewardsContract = IServiceNodeRewards(_stakingRewardsContract);
@@ -43,7 +43,7 @@ contract ServiceNodeContributionFactory is Initializable, Ownable2StepUpgradeabl
 
         result = address(newContract);
         deployedContracts[result] = true;
-        emit NewServiceNodeContributionContract(result, params.serviceNodePubkey);
+        emit NewServiceNodeContributionContract(result, params.serviceNodePubkey, tx.origin);
         return result;
     }
 

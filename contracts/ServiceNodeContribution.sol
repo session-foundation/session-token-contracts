@@ -60,10 +60,16 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
     // a public contributor fulfills the node).
     bool public manualFinalize;
 
-    // Modifers
+    // Modifiers
     modifier onlyOperator() {
         if (msg.sender != operator)
             revert OnlyOperatorIsAuthorised(msg.sender, operator);
+        _;
+    }
+
+    modifier requireWaitForOperatorContribStatus() {
+        if (status != Status.WaitForOperatorContrib)
+            revert RequireWaitForOperatorContribStatus(status);
         _;
     }
 
@@ -115,16 +121,17 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
 
     function _updateManualFinalize(bool value) private {
         manualFinalize = value;
+        emit UpdateManualFinalize(value);
     }
 
     function updateFee(uint16 fee) external onlyOperator { _updateFee(fee); }
 
-    function _updateFee(uint16 fee) private {
-        if (status != Status.WaitForOperatorContrib)
-            revert FeeUpdateNotPossible(status);
+    function _updateFee(uint16 fee) private requireWaitForOperatorContribStatus {
         if (fee > MAX_FEE)
             revert FeeExceedsPossibleValue(fee, MAX_FEE);
         _serviceNodeParams.fee = fee;
+
+        emit UpdateFee(fee);
     }
 
     function updatePubkeys(BN256G1.G1Point memory newBLSPubkey,
@@ -139,10 +146,7 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
                             IServiceNodeRewards.BLSSignatureParams memory newBLSSig,
                             uint256 ed25519Pubkey,
                             uint256 ed25519Sig0,
-                            uint256 ed25519Sig1) private {
-        if (status != Status.WaitForOperatorContrib)
-            revert PubkeyUpdateNotPossible(status);
-
+                            uint256 ed25519Sig1) private requireWaitForOperatorContribStatus {
         stakingRewardsContract.validateProofOfPossession(newBLSPubkey, newBLSSig, operator, ed25519Pubkey);
 
         // NOTE: Update BLS keys
@@ -153,16 +157,15 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
         _serviceNodeParams.serviceNodePubkey     = ed25519Pubkey;
         _serviceNodeParams.serviceNodeSignature1 = ed25519Sig0;
         _serviceNodeParams.serviceNodeSignature2 = ed25519Sig1;
+
+        emit UpdatePubkeys(newBLSPubkey, ed25519Pubkey);
     }
 
     function updateReservedContributors(IServiceNodeRewards.ReservedContributor[] memory reserved) external onlyOperator {
         _updateReservedContributors(reserved);
     }
 
-    function _updateReservedContributors(IServiceNodeRewards.ReservedContributor[] memory reserved) private {
-        if (status != Status.WaitForOperatorContrib)
-            revert ReservedContributorUpdateNotPossible(status);
-
+    function _updateReservedContributors(IServiceNodeRewards.ReservedContributor[] memory reserved) private requireWaitForOperatorContribStatus {
         // NOTE: Remove old reserved contributions
         {
             uint256 length = reservedContributionsAddresses.length;
@@ -213,6 +216,8 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
 
             unchecked { i += 1; }
         }
+
+        emit UpdateReservedContributors(reserved);
     }
 
     // @notice Select the beneficiary as the `beneficiary` is not the
@@ -249,7 +254,7 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
         if (!updated)
             revert NonContributorUpdatedBeneficiary(stakerAddr);
 
-        emit UpdateStakerBeneficiary(stakerAddr, oldBeneficiary, desiredBeneficiary);
+        emit UpdateStakerBeneficiary(stakerAddr, desiredBeneficiary);
     }
 
     function contributeFunds(uint256 amount, address beneficiary) external { _contributeFunds(msg.sender, beneficiary, amount); }
@@ -271,7 +276,7 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
             if (caller != operator)
                 revert FirstContributionMustBeOperator(caller, operator);
             status = Status.OpenForPublicContrib;
-            emit OpenForPublicContribution(_serviceNodeParams.serviceNodePubkey, operator, _serviceNodeParams.fee);
+            emit OpenForPublicContribution();
         }
 
         // NOTE: Verify the contribution
@@ -318,8 +323,8 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
         // State transition before calling out to external code to mitigate
         // re-entrancy.
         if (currTotalContribution == stakingRequirement) {
-            emit Filled(_serviceNodeParams.serviceNodePubkey, operator);
             status = Status.WaitForFinalized;
+            emit Filled();
         }
 
         // NOTE: Transfer funds from sender to contract
@@ -340,7 +345,7 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
 
         // NOTE: Finalize the contract
         status = Status.Finalized;
-        emit Finalized(_serviceNodeParams.serviceNodePubkey);
+        emit Finalized();
 
         uint256 length                                        = _contributorAddresses.length;
         IServiceNodeRewards.Contributor[] memory contributors = new IServiceNodeRewards.Contributor[](length);
@@ -382,6 +387,8 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
             IServiceNodeRewards.ReservedContributor[] memory zero = new IServiceNodeRewards.ReservedContributor[](0);
             _updateReservedContributors(zero);
         }
+
+        emit Reset();
     }
 
     function resetUpdateAndContribute(BN256G1.G1Point memory key,
@@ -410,19 +417,6 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
             _contributeFunds(operator, beneficiary, amount);
     }
 
-    function resetUpdateFeeReservedAndContribute(uint16 fee,
-                                                 IServiceNodeRewards.ReservedContributor[] memory reserved,
-                                                 bool _manualFinalize,
-                                                 address beneficiary,
-                                                 uint256 amount) external onlyOperator {
-        _reset();
-        _updateFee(fee);
-        _updateReservedContributors(reserved);
-        _updateManualFinalize(_manualFinalize);
-        if (amount > 0)
-            _contributeFunds(operator, beneficiary, amount);
-    }
-
     function rescueERC20(address tokenAddress) external onlyOperator {
         // NOTE: ERC20 tokens sent to the contract can only be rescued after the
         // contract is finalized or the contract has been reset
@@ -437,15 +431,16 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
         // This allows them to refund any other tokens that might have
         // mistakenly been sent throughout the lifetime of the contract without
         // giving them access to contributor tokens.
-        if (status != Status.Finalized && status == Status.WaitForOperatorContrib)
+        if (status == Status.Finalized || status == Status.WaitForOperatorContrib) {
+            IERC20 token = IERC20(tokenAddress);
+            uint256 balance = token.balanceOf(address(this));
+            if (balance <= 0)
+                revert RescueBalanceIsEmpty(tokenAddress);
+            token.safeTransfer(operator, balance);
+        } else {
             revert RescueNotPossible(status);
+        }
 
-        IERC20 token = IERC20(tokenAddress);
-        uint256 balance = token.balanceOf(address(this));
-        if (balance <= 0)
-            revert RescueBalanceIsEmpty(tokenAddress);
-
-        token.safeTransfer(operator, balance);
     }
 
     function withdrawContribution() external {
