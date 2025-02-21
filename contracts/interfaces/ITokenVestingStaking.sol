@@ -150,11 +150,6 @@ interface ITokenVestingStaking {
     /// rewards. See notes on `snContribBeneficiary` for `contributeFunds`.
     function updateBeneficiary(address snContribAddr, address snContribBeneficiary) external;
 
-    /// @notice Allows the revoker to change the multi-contributor factory which
-    /// determines if contribution addresses are valid.
-    /// @param factoryAddr ServiceNodeContributionFactory address to update.
-    function updateContributionFactory(address factoryAddr) external;
-
     //////////////////////////////////////////////////////////////
     //                                                          //
     //             Investor contract functions                  //
