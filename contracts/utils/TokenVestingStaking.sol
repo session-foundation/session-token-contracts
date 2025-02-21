@@ -77,7 +77,7 @@ contract TokenVestingStaking is ITokenVestingStaking, Shared {
     // solhint-disable-next-line var-name-mixedcase
     IERC20                          public immutable SESH;
     IServiceNodeRewards             public immutable rewardsContract;
-    IServiceNodeContributionFactory public           snContribFactory;
+    IServiceNodeContributionFactory public immutable snContribFactory;
 
     //////////////////////////////////////////////////////////////
     //                                                          //
@@ -192,10 +192,6 @@ contract TokenVestingStaking is ITokenVestingStaking, Shared {
     ) external onlyRevokerIfRevokedElseBeneficiary afterStart nzAddr(snContribBeneficiary) {
         IServiceNodeContribution snContrib = getContributionContract(snContribAddr);
         snContrib.updateBeneficiary(snContribBeneficiary);
-    }
-
-    function updateContributionFactory(address factoryAddr) external override onlyRevoker nzAddr(factoryAddr) {
-        snContribFactory = IServiceNodeContributionFactory(factoryAddr);
     }
 
     //////////////////////////////////////////////////////////////
