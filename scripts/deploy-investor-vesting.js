@@ -55,6 +55,7 @@ async function main() {
 
   // Load CSV of the investors
   const csvFilePath = 'investors.csv';
+  console.log(`CSV file: ${csvFilePath}`);
   if (!fs.existsSync(csvFilePath)) {
     console.error(chalk.red(`Error: CSV file not found at ${csvFilePath}`));
     console.error("Please create a CSV file with the following headers:");
@@ -147,7 +148,8 @@ async function main() {
         amount: record.amount,
         start: new Date(start * 1000).toISOString(),
         end: new Date(end * 1000).toISOString(),
-        transferableBeneficiary: transferableBeneficiary
+        transferableBeneficiary: transferableBeneficiary,
+        revoker: record.revoker
       });
 
     } catch (error) {
@@ -182,7 +184,8 @@ async function main() {
     'amount',
     'start',
     'end',
-    'transferableBeneficiary'
+    'transferableBeneficiary',
+    'revoker'
   ];
   
   const csvRows = [
@@ -194,7 +197,8 @@ async function main() {
         contract.amount,
         contract.start,
         contract.end,
-        contract.transferableBeneficiary
+        contract.transferableBeneficiary,
+        contract.revoker
       ].join(',');
     })
   ];
