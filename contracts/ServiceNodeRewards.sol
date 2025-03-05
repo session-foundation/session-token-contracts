@@ -170,14 +170,14 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
     event ClaimThresholdUpdated(uint256 newThreshold);
     event ClaimCycleUpdated(uint256 newValue);
     event LiquidationRatiosUpdated(uint256 liquidatorRatio, uint256 poolRatio, uint256 recipientRatio);
-    event ServiceNodeLiquidated(uint64 indexed serviceNodeID, address operator, BN256G1.G1Point pubkey);
+    event ServiceNodeLiquidated(uint64 indexed serviceNodeID, address initiator, BN256G1.G1Point pubkey);
     event ServiceNodeExit(
         uint64 indexed serviceNodeID,
-        address operator,
+        address initiator,
         uint256 returnedAmount,
         BN256G1.G1Point pubkey
     );
-    event ServiceNodeExitRequest(uint64 indexed serviceNodeID, address contributor, BN256G1.G1Point pubkey);
+    event ServiceNodeExitRequest(uint64 indexed serviceNodeID, address initiator, BN256G1.G1Point pubkey);
     event StakingRequirementUpdated(uint256 newRequirement);
     event SignatureExpiryUpdated(uint256 newExpiry);
 
@@ -192,7 +192,7 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
     // @param serviceNodeID The node that has already paired with the Ed25519
     // public key.
     error Ed25519PubkeyAlreadyExists(uint64 serviceNodeID);
-    error CallerNotContributor(uint64 serviceNodeID, address contributor);
+    error CallerNotContributor(uint64 serviceNodeID, address caller);
     error ClaimThresholdExceeded();
     error ContractAlreadyStarted();
     error ContractNotStarted();
@@ -423,7 +423,7 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
         }
 
         updateBLSNonSignerThreshold();
-        emit NewServiceNodeV2(allocID, operator, blsPubkey, serviceNodeParams, contributors);
+        emit NewServiceNodeV2(allocID, tx.origin, blsPubkey, serviceNodeParams, contributors);
         SafeERC20.safeTransferFrom(designatedToken, msg.sender, address(this), stakingRequirement);
     }
 
@@ -511,7 +511,7 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
         }
 
         sn.latestLeaveRequestTimestamp = block.timestamp;
-        emit ServiceNodeExitRequest(serviceNodeID, caller, sn.blsPubkey);
+        emit ServiceNodeExitRequest(serviceNodeID, tx.origin, sn.blsPubkey);
     }
 
     /// @notice Exits a BLS public key using an aggregated BLS signature from
@@ -567,12 +567,11 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
     ///
     /// @param serviceNodeID The ID of the service node to be exited.
     function _exitBLSPublicKey(uint64 serviceNodeID, uint256 returnedAmount) internal {
-        address operator = _serviceNodes[serviceNodeID].operator;
         BN256G1.G1Point memory pubkey = _serviceNodes[serviceNodeID].blsPubkey;
         serviceNodeDelete(serviceNodeID);
 
         updateBLSNonSignerThreshold();
-        emit ServiceNodeExit(serviceNodeID, operator, returnedAmount, pubkey);
+        emit ServiceNodeExit(serviceNodeID, tx.origin, returnedAmount, pubkey);
     }
 
     /// @notice Minimum time before a node may exit (normally or via liquidation). This prevents
@@ -649,7 +648,7 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
             blsPubkey, timestamp, blsSignature, liquidateTag, ids);
 
         // Calculating how much liquidator is paid out
-        emit ServiceNodeLiquidated(serviceNodeID, node.operator, node.blsPubkey);
+        emit ServiceNodeLiquidated(serviceNodeID, tx.origin, node.blsPubkey);
         uint256 ratioSum = poolShareOfLiquidationRatio + liquidatorRewardRatio + recipientRatio;
         uint256 deposit = node.deposit;
         uint256 liquidatorAmount = (deposit * liquidatorRewardRatio) / ratioSum;
