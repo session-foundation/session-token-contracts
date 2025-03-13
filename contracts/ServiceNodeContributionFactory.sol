@@ -38,12 +38,13 @@ contract ServiceNodeContributionFactory is Initializable, Ownable2StepUpgradeabl
             sig,
             params,
             reserved,
+            msg.sender,
             manualFinalize
         );
 
         result = address(newContract);
         deployedContracts[result] = true;
-        emit NewServiceNodeContributionContract(result, params.serviceNodePubkey, tx.origin);
+        emit NewServiceNodeContributionContract(result, params.serviceNodePubkey, msg.sender);
         return result;
     }
 
