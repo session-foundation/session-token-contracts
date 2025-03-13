@@ -423,7 +423,7 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
         }
 
         updateBLSNonSignerThreshold();
-        emit NewServiceNodeV2(allocID, tx.origin, blsPubkey, serviceNodeParams, contributors);
+        emit NewServiceNodeV2(allocID, msg.sender, blsPubkey, serviceNodeParams, contributors);
         SafeERC20.safeTransferFrom(designatedToken, msg.sender, address(this), stakingRequirement);
     }
 
@@ -511,7 +511,7 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
         }
 
         sn.latestLeaveRequestTimestamp = block.timestamp;
-        emit ServiceNodeExitRequest(serviceNodeID, tx.origin, sn.blsPubkey);
+        emit ServiceNodeExitRequest(serviceNodeID, caller, sn.blsPubkey);
     }
 
     /// @notice Exits a BLS public key using an aggregated BLS signature from
@@ -571,7 +571,7 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
         serviceNodeDelete(serviceNodeID);
 
         updateBLSNonSignerThreshold();
-        emit ServiceNodeExit(serviceNodeID, tx.origin, returnedAmount, pubkey);
+        emit ServiceNodeExit(serviceNodeID, msg.sender, returnedAmount, pubkey);
     }
 
     /// @notice Minimum time before a node may exit (normally or via liquidation). This prevents
@@ -648,7 +648,7 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
             blsPubkey, timestamp, blsSignature, liquidateTag, ids);
 
         // Calculating how much liquidator is paid out
-        emit ServiceNodeLiquidated(serviceNodeID, tx.origin, node.blsPubkey);
+        emit ServiceNodeLiquidated(serviceNodeID, msg.sender, node.blsPubkey);
         uint256 ratioSum = poolShareOfLiquidationRatio + liquidatorRewardRatio + recipientRatio;
         uint256 deposit = node.deposit;
         uint256 liquidatorAmount = (deposit * liquidatorRewardRatio) / ratioSum;
