@@ -100,13 +100,14 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
         IServiceNodeRewards.BLSSignatureParams memory sig,
         IServiceNodeRewards.ServiceNodeParams memory params,
         IServiceNodeRewards.ReservedContributor[] memory reserved,
+        address _operator,
         bool _manualFinalize
     ) nzAddr(_stakingRewardsContract) nzUint(_maxContributors) {
         stakingRewardsContract = IServiceNodeRewards(_stakingRewardsContract);
         stakingRequirement     = stakingRewardsContract.stakingRequirement();
         SESH                   = IERC20(stakingRewardsContract.designatedToken());
         maxContributors        = _maxContributors;
-        operator               = tx.origin; // NOTE: Creation is delegated by operator through factory
+        operator               = _operator;
         address nilBeneficiary = address(0);
         _resetUpdateAndContribute(key, sig, params, reserved, _manualFinalize, nilBeneficiary, 0);
     }
