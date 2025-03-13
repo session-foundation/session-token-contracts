@@ -75,6 +75,7 @@ contract ServiceNodeContributionEchidnaTest {
             /*sig*/               blsSig,
             /*serviceNodeParams*/ snParams,
             /*reserved*/          reserved,
+            /*operator*/          snOperator,
             /*manualFinalize*/    false
         );
 
