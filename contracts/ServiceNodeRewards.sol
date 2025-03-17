@@ -197,8 +197,8 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
     error ContractAlreadyStarted();
     error ContractNotStarted();
     error ContributionTotalMismatch(uint256 required, uint256 provided);
+    error InsufficientOperatorContribution(uint256 operatorStake);
     error DeleteSentinelNodeNotAllowed();
-    error FirstContributorMismatch(address operator, address contributor);
     error InsufficientBLSSignatures(uint256 numSigners, uint256 requiredSigners);
     error InsufficientContributors();
     error InsufficientNodes();
@@ -378,6 +378,10 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
             }
             if (totalAmount != stakingRequirement)
                 revert ContributionTotalMismatch(stakingRequirement, totalAmount);
+
+            // The operator must contribute >= 25% of the total staking requirement:
+            if (contributors[0].stakedAmount * 4 < stakingRequirement)
+                revert InsufficientOperatorContribution(contributors[0].stakedAmount);
         } else {
             contributors       = new Contributor[](1);
             contributors[0]    = Contributor(Staker(/*addr*/ msg.sender, /*beneficiary*/ msg.sender), stakingRequirement);
