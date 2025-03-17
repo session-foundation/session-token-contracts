@@ -6582,4 +6582,106 @@ describe("ServiceNodeRewards Contract Tests", function () {
             ]);
         }).timeout(80000);
     });
+
+
+    // These tests verify that staking requirements get checked if you bypass the multi-contrib
+    // helper and submit directly into the rewards contract.
+    describe("Direct rewards contract multi-contributor", function () {
+        let submitter;
+        let contributor;
+        let contr_addr;
+        let rewards_addr;
+        const blsPubkey = {
+            X: BigInt("0x28852e6bd8fc98305370c1636e35d3b1fe30cb5d79e5392b1238f18a1f60a1ed"),
+            Y: BigInt("0x1d0a9ed200fc6762ce53b42d6c9173a11c233a8e41d634ec7014c00ebb5ed4b0"),
+        };
+        const blsSig = {
+            sigs0: BigInt("0x27ceb4fb24b0cb43c55af0ce2f6463e6d14ec1c7f9edbad7c00fbb31a38e3d53"),
+            sigs1: BigInt("0x2386070cdd9a315241a8d351e2185addc042ad36aca524ad93a7862ac452b9a1"),
+            sigs2: BigInt("0x2170a69f683f44baabf1c590e6c5863a0d30b84d50144cb2f8cc8cb105fad7e9"),
+            sigs3: BigInt("0x0d9e3b16e83584504b5a597e98cfa76f9d7487878b6a03677beed56fe7a1ba39"),
+        };
+        const snParams = {
+            serviceNodePubkey: BigInt("0x3621a81c1ef05d48fc9be9dd590ab0869a70fa751e40d8fbebdb0d90e285dbd8"),
+            serviceNodeSignature1: BigInt("0x9812e9d91f4e468c56f77fdbb6735b50c2c3590055efb38f26796a4630d4da42"),
+            serviceNodeSignature2: BigInt("0x40779f125038351141f70f5e8d24cc1b70abcd466a28847551cc1496c13ae209"),
+            fee: 0
+        };
+        const op_addr = "0x0123456789abcDEF0123456789abCDef01234567";
+
+        beforeEach(async function () {
+            await serviceNodeRewards.start();
+            [submitter, contributor] = await ethers.getSigners();
+            contr_addr = await contributor.getAddress();
+            await mockERC20.transfer(submitter, staking_req);
+            rewards_addr = await serviceNodeRewards.getAddress();
+            await mockERC20.connect(submitter).approve(rewards_addr, staking_req);
+        });
+
+        const get_stakes = function(op_percent, contr_percent) {
+            return [
+                {
+                    staker: {
+                        addr:        op_addr,
+                        beneficiary: op_addr,
+                    },
+                    stakedAmount: staking_req * BigInt(op_percent) / 100n,
+                },
+                {
+                    staker: {
+                        addr:        contr_addr,
+                        beneficiary: contr_addr,
+                    },
+                    stakedAmount: staking_req * BigInt(contr_percent) / 100n,
+                },
+            ];
+        };
+
+        // These "allow" tests below are testing that we get rejected with
+        // InvalidBLSProofOfPossession, which is simply because we aren't generating real BLS
+        // signatures here (as the PoP signature depends on the actual rewards contract address),
+        // but the staking validation checks happen *before* the PoP signature verification, so if
+        // we get that far we consider it successful.
+
+        it("allows 30% operator stake", async function () {
+            await expect(serviceNodeRewards.connect(submitter).addBLSPublicKey(
+                blsPubkey,
+                blsSig,
+                snParams,
+                get_stakes(30, 70))).to.be.revertedWithCustomError(serviceNodeRewards, 'InvalidBLSProofOfPossession');
+        });
+
+        it("allows 25% operator stake", async function () {
+            await expect(serviceNodeRewards.connect(submitter).addBLSPublicKey(
+                blsPubkey,
+                blsSig,
+                snParams,
+                get_stakes(25, 75))).to.be.revertedWithCustomError(serviceNodeRewards, 'InvalidBLSProofOfPossession');
+        });
+
+        it("rejects 24% operator stake", async function () {
+            await expect(serviceNodeRewards.connect(submitter).addBLSPublicKey(
+                blsPubkey,
+                blsSig,
+                snParams,
+                get_stakes(24, 76))).to.be.revertedWithCustomError(serviceNodeRewards, "InsufficientOperatorContribution");
+        });
+
+        it("rejects too little staked", async function () {
+            await expect(serviceNodeRewards.connect(submitter).addBLSPublicKey(
+                blsPubkey,
+                blsSig,
+                snParams,
+                get_stakes(25, 74))).to.be.revertedWithCustomError(serviceNodeRewards, "ContributionTotalMismatch");
+        });
+
+        it("rejects too much staked", async function () {
+            await expect(serviceNodeRewards.connect(submitter).addBLSPublicKey(
+                blsPubkey,
+                blsSig,
+                snParams,
+                get_stakes(25, 76))).to.be.revertedWithCustomError(serviceNodeRewards, "ContributionTotalMismatch");
+        });
+
+    });
 });
