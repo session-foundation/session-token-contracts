@@ -88,6 +88,10 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
     /// key, a signature and the fee the operator is charging.
     /// @param reserved The new array of reserved contributors with their
     /// proportion of stake they must fulfill in the node.
+    /// @param _operator The owner and operator of the node that will be
+    /// deployed from this multi-contribution contract and consequently the
+    /// recipient of the operator fee and admin access control of the
+    /// multi-contribution contract.
     /// @param _manualFinalize Configure if the contract automatically (or does
     /// not) finalize the contract upon receipt of a contribution that
     /// funds the total required staking requirement of the contract.
