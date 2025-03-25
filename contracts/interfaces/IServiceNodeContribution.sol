@@ -48,7 +48,7 @@ interface IServiceNodeContribution {
     event UpdateStakerBeneficiary       (address indexed staker, address newBeneficiary);
     event UpdateManualFinalize          (bool newValue);
     event UpdateFee                     (uint16 newFee);
-    event UpdatePubkeys                 (BN256G1.G1Point indexed newBLSPubkey, uint256 indexed newEd25519Pubkey);
+    event UpdatePubkeys                 (BN256G1.G1Point newBLSPubkey, uint256 newEd25519Pubkey);
     event UpdateReservedContributors    (IServiceNodeRewards.ReservedContributor[] newReservedContributors);
     event Reset                         ();
 
