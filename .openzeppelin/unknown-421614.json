@@ -84,6 +84,21 @@
       "address": "0x90DCb4635D8Df6EeAD86763c64A96d88D06B172f",
       "txHash": "0x75715e19c560efca4efd5addde8a772e3be68fd80485ddd8535db7403d0227b5",
       "kind": "transparent"
+    },
+    {
+      "address": "0xa81a11771B1dD57c2db8b3d2E35af46b35BB0F85",
+      "txHash": "0x7e8d7f0071e713bed506a60d0226faef6b0dfc7ffa2b6b2320c27450f6925d06",
+      "kind": "transparent"
+    },
+    {
+      "address": "0x0005C35433bF677d3501b73A33cB42A481C6C2a3",
+      "txHash": "0x2edae77e8c25bbbf9e78e4b27717143545b7750cc0f5268e20e33ee18035dd96",
+      "kind": "transparent"
+    },
+    {
+      "address": "0xbb2d761a010906F2E98F4e0A8A1FeeDb41E28cec",
+      "txHash": "0x510024a6528d72e35b1346aee01ff56be33bd0b42eaf1cbbd32d4f1d05aa45ac",
+      "kind": "transparent"
     }
   ],
   "impls": {
@@ -10982,7 +10997,158 @@
             "label": "stakingRewardsContract",
             "offset": 0,
             "slot": "0",
-            "type": "t_contract(IServiceNodeRewards)7888",
+            "type": "t_contract(IServiceNodeRewards)11689",
+            "contract": "ServiceNodeContributionFactory",
+            "src": "contracts/ServiceNodeContributionFactory.sol:11"
+          },
+          {
+            "label": "deployedContracts",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_mapping(t_address,t_bool)",
+            "contract": "ServiceNodeContributionFactory",
+            "src": "contracts/ServiceNodeContributionFactory.sol:15"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_struct(InitializableStorage)141_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(Ownable2StepStorage)13_storage": {
+            "label": "struct Ownable2StepUpgradeable.Ownable2StepStorage",
+            "members": [
+              {
+                "label": "_pendingOwner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(OwnableStorage)74_storage": {
+            "label": "struct OwnableUpgradeable.OwnableStorage",
+            "members": [
+              {
+                "label": "_owner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(PausableStorage)444_storage": {
+            "label": "struct PausableUpgradeable.PausableStorage",
+            "members": [
+              {
+                "label": "_paused",
+                "type": "t_bool",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_contract(IServiceNodeRewards)11689": {
+            "label": "contract IServiceNodeRewards",
+            "numberOfBytes": "20"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)",
+            "numberOfBytes": "32"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.Pausable": [
+            {
+              "contract": "PausableUpgradeable",
+              "label": "_paused",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol:21",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Ownable2Step": [
+            {
+              "contract": "Ownable2StepUpgradeable",
+              "label": "_pendingOwner",
+              "type": "t_address",
+              "src": "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol:23",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Ownable": [
+            {
+              "contract": "OwnableUpgradeable",
+              "label": "_owner",
+              "type": "t_address",
+              "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:24",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
+      }
+    },
+    "7cf75f6dbd51f2e294ffda9428d3306dfefb0dc6ff13694ae77b0d174a6675ec": {
+      "address": "0x46B10A20E30913B75B15Da4DC18c8d31C69E9b41",
+      "txHash": "0x600d36d47b44183013d7359c089a208c44844e5be56ff36107b5a29bd5332761",
+      "layout": {
+        "solcVersion": "0.8.26",
+        "storage": [
+          {
+            "label": "stakingRewardsContract",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_contract(IServiceNodeRewards)7890",
             "contract": "ServiceNodeContributionFactory",
             "src": "contracts/ServiceNodeContributionFactory.sol:11"
           },
@@ -11062,7 +11228,7 @@
             "label": "uint64",
             "numberOfBytes": "8"
           },
-          "t_contract(IServiceNodeRewards)7888": {
+          "t_contract(IServiceNodeRewards)7890": {
             "label": "contract IServiceNodeRewards",
             "numberOfBytes": "20"
           },
