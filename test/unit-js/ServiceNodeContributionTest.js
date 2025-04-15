@@ -330,7 +330,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
              await seshToken.connect(snOperator).approve(snContributionAddress, minContribution);
              await expect(snContribution.connect(snOperator).contributeFunds(minContribution, beneficiaryData))
                    .to.emit(snContribution, "NewContribution")
-                   .withArgs(await snOperator.getAddress(), minContribution);
+                   .withArgs(await snOperator.getAddress(), await snOperator.getAddress(), minContribution);
 
              await expect(await snContribution.operatorContribution())
                  .to.equal(minContribution);
@@ -384,7 +384,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
                  await expect(snContribution.connect(snOperator)
                                             .contributeFunds(minContribution, beneficiaryData)).to
                                                                              .emit(snContribution, "NewContribution")
-                                                                             .withArgs(await snOperator.getAddress(), minContribution);
+                                                                             .withArgs(await snOperator.getAddress(), await snOperator.getAddress(), minContribution);
              });
 
              it("Should be able to contribute funds as a contributor", async function () {
@@ -395,7 +395,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
                  await seshToken.connect(contributor).approve(snContribution, minContribution);
                  await expect(snContribution.connect(contributor).contributeFunds(minContribution, beneficiaryData))
                        .to.emit(snContribution, "NewContribution")
-                       .withArgs(await contributor.getAddress(), minContribution);
+                       .withArgs(await contributor.getAddress(), await contributor.getAddress(), minContribution);
                  await expect(await snContribution.operatorContribution())
                      .to.equal(previousContribution);
                  await expect(await snContribution.totalContribution())
@@ -412,7 +412,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
                  await seshToken.connect(snOperator).approve(snContribution, topup);
                  await expect(snContribution.connect(snOperator).contributeFunds(topup, beneficiaryData))
                        .to.emit(snContribution, "NewContribution")
-                       .withArgs(await snOperator.getAddress(), topup);
+                       .withArgs(await snOperator.getAddress(), await snOperator.getAddress(), topup);
                  await expect(await snContribution.operatorContribution())
                      .to.equal(currTotal + topup);
                  await expect(await snContribution.totalContribution())
@@ -439,7 +439,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
                      await expect(snContribution.connect(contributor1)
                                                          .contributeFunds(minContribution1, beneficiaryData)).to
                                                                                             .emit(snContribution, "NewContribution")
-                                                                                            .withArgs(await contributor1.getAddress(), minContribution1);
+                                                                                            .withArgs(await contributor1.getAddress(), await contributor1.getAddress(), minContribution1);
 
                      // NOTE: Contributor 2 w/ minContribution()
                      const minContribution2 = await snContribution.minimumContribution();
@@ -450,7 +450,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
                      await expect(snContribution.connect(contributor2)
                                                          .contributeFunds(minContribution2, beneficiaryData)).to
                                                                                             .emit(snContribution, "NewContribution")
-                                                                                            .withArgs(await contributor2.getAddress(), minContribution2);
+                                                                                            .withArgs(await contributor2.getAddress(), await contributor2.getAddress(), minContribution2);
 
                      // NOTE: Check contribution values
                      expect(await snContribution.operatorContribution()).to
@@ -473,7 +473,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
                      await seshToken.connect(contributor1).approve(snContribution, topup1);
                      await expect(snContribution.connect(contributor1).contributeFunds(topup1, beneficiaryData))
                            .to.emit(snContribution, "NewContribution")
-                           .withArgs(await contributor1.getAddress(), topup1);
+                           .withArgs(await contributor1.getAddress(), await contributor1.getAddress(), topup1);
 
                      const minContribution2 = await snContribution.minimumContribution();
                      const topup2 = BigInt(13_000000000);
@@ -482,7 +482,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
                      await seshToken.connect(contributor2).approve(snContribution, topup2);
                      await expect(snContribution.connect(contributor2).contributeFunds(topup2, beneficiaryData))
                            .to.emit(snContribution, "NewContribution")
-                           .withArgs(await contributor2.getAddress(), topup2);
+                           .withArgs(await contributor2.getAddress(), await  contributor2.getAddress(), topup2);
 
                      await expect(await snContribution.operatorContribution())
                          .to.equal(initialOperatorContrib);
@@ -534,7 +534,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
                                   await expect(snContribution.connect(contributor1)
                                                                       .contributeFunds(minContribution1, beneficiaryData)).to
                                                                                                          .emit(snContribution, "NewContribution")
-                                                                                                         .withArgs(await contributor1.getAddress(), minContribution1);
+                                                                                                         .withArgs(await contributor1.getAddress(), await contributor1.getAddress(), minContribution1);
 
                                   // NOTE: Contributor 2 w/ minContribution()
                                   const minContribution2 = await snContribution.minimumContribution();
@@ -545,7 +545,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
                                   await expect(snContribution.connect(contributor2)
                                                                       .contributeFunds(minContribution2, beneficiaryData)).to
                                                                                                          .emit(snContribution, "NewContribution")
-                                                                                                         .withArgs(await contributor2.getAddress(), minContribution2);
+                                                                                                         .withArgs(await contributor2.getAddress(), await contributor2.getAddress(), minContribution2);
 
                                   // NOTE: Check contribution values
                                   expect(await snContribution.operatorContribution()).to
@@ -620,12 +620,12 @@ describe("ServiceNodeContribution Contract Tests", function () {
                                                         .contributeFunds(minContribution, beneficiaryData)).to
                                                                                           .emit(snContribution, "NewContribution")
                                                                                           .emit(snContribution, "Finalized")
-                                                                                          .withArgs(await signer.getAddress(), minContribution);
+                                                                                          .withArgs(await signer.getAddress(), await signer.getAddress(), minContribution);
                          } else {
                              await expect(snContribution.connect(signer)
                                                         .contributeFunds(minContribution, beneficiaryData)).to
                                                                                           .emit(snContribution, "NewContribution")
-                                                                                          .withArgs(await signer.getAddress(), minContribution);
+                                                                                          .withArgs(await signer.getAddress(), await signer.getAddress(), minContribution);
                          }
                      }
                  }
@@ -644,7 +644,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
 
                  await expect(await snContribution.connect(contributor).contributeFunds(minContribution, beneficiaryData))
                      .to.emit(snContribution, "NewContribution")
-                     .withArgs(await contributor.getAddress(), minContribution);
+                     .withArgs(await contributor.getAddress(), await contributor.getAddress(), minContribution);
 
                  await expect(snContribution.finalize()).to.be.reverted;
 
@@ -1128,7 +1128,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
             await seshToken.connect(reservedContributor1).approve(snContribution.getAddress(), contribution1);
             await expect(snContribution.connect(reservedContributor1).contributeFunds(contribution1, beneficiaryData))
                 .to.emit(snContribution, "NewContribution")
-                .withArgs(reservedContributor1.address, contribution1);
+                .withArgs(reservedContributor1.address, reservedContributor1.address, contribution1);
 
             // NOTE: Check contribution is registered
             const contribution = await snContribution.contributions(reservedContributor1.address);
@@ -1176,7 +1176,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
 
             await expect(snContribution.connect(reservedContributor1).contributeFunds(contribution1 + 1, beneficiaryData))
                 .to.emit(snContribution, "NewContribution")
-                .withArgs(reservedContributor1.address, contribution1 + 1);
+                .withArgs(reservedContributor1.address, reservedContributor1.address, contribution1 + 1);
 
             const contribution = await snContribution.contributions(reservedContributor1.address);
             expect(contribution).to.equal(contribution1 + 1);
@@ -1219,7 +1219,7 @@ describe("ServiceNodeContribution Contract Tests", function () {
             await seshToken.connect(reservedContributor2).approve(snContribution.getAddress(), contribution2);
             await expect(snContribution.connect(reservedContributor2).contributeFunds(contribution2, beneficiaryData))
                 .to.emit(snContribution, "NewContribution")
-                .withArgs(reservedContributor2.address, contribution2);
+                .withArgs(reservedContributor2.address, reservedContributor2.address, contribution2);
 
             // NOTE: Check contract reservation data before we withdraw
             await expect(await snContribution.getReserved()).to.deep.equal(

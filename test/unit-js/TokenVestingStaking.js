@@ -269,7 +269,7 @@ describe("TokenVestingStaking Contract Tests", function () {
                                                                               contribAmount,
                                                                               /*snContribBenficiary*/ beneficiary))
                 .to.emit(snContribContract, "NewContribution")
-                .withArgs(await vestingContract.getAddress(), contribAmount);
+                .withArgs(await vestingContract.getAddress(), beneficiary.address, contribAmount);
 
             const contractBalance = await mockERC20.balanceOf(snContribContract.getAddress());
             expect(contractBalance).to.equal(revokerContribAmount + contribAmount);

@@ -41,7 +41,7 @@ interface IServiceNodeContribution {
     //////////////////////////////////////////////////////////////
 
     event Finalized                     ();
-    event NewContribution               (address indexed contributor, uint256 amount);
+    event NewContribution               (address indexed contributor, address beneficiary, uint256 amount);
     event OpenForPublicContribution     ();
     event Filled                        ();
     event WithdrawContribution          (address indexed contributor, uint256 amount);
