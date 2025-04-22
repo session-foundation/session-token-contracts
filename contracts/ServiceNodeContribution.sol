@@ -155,7 +155,7 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
         stakingRewardsContract.validateProofOfPossession(newBLSPubkey, newBLSSig, operator, ed25519Pubkey);
 
         // NOTE: Update BLS keys
-        blsPubkey                               = newBLSPubkey;
+        blsPubkey                                = newBLSPubkey;
         _blsSignature                            = newBLSSig;
 
         // NOTE: Update Ed25519 keys
@@ -302,11 +302,11 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
         }
 
         // NOTE: Add the contributor to the contract
+        address desiredBeneficiary = deriveBeneficiary(caller, beneficiary);
         if (contributions[caller] == 0) {
-            address desiredBeneficiary = deriveBeneficiary(caller, beneficiary);
             _contributorAddresses.push(IServiceNodeRewards.Staker(caller, desiredBeneficiary));
         } else {
-            _updateBeneficiary(caller, beneficiary);
+            _updateBeneficiary(caller, desiredBeneficiary);
         }
 
         // NOTE: Update the amount contributed and transfer the tokens
@@ -333,7 +333,7 @@ contract ServiceNodeContribution is Shared, IServiceNodeContribution {
         }
 
         // NOTE: Transfer funds from sender to contract
-        emit NewContribution(caller, amount);
+        emit NewContribution(caller, desiredBeneficiary, amount);
         SESH.safeTransferFrom(caller, address(this), amount);
 
         // NOTE: Auto finalize the node if valid
