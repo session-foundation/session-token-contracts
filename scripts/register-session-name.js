@@ -9,10 +9,11 @@ const ethers = hre.ethers;
 async function main() {
   [owner] = await ethers.getSigners();
   // These values should be updated for your specific deployment
-  const SESSION_NAME_SERVICE_ADDRESS = "0xF139E83F23cb08a967185a93EA2FA5D52F1C38e8"; // Replace with your deployed contract address
-  const NAME_TO_REGISTER = "example"; // Replace with the name you want to register
-  const RECIPIENT_ADDRESS = owner.getAddress(); // Replace with the address that should own the name
-  const TEXT_RECORD = "Hello from Session Name Service!"; // Text record to set for the name
+  const SESSION_NAME_SERVICE_ADDRESS = "0xF698CCF07208D14288c4A92E0bE9930D6F41BD7c"; // Replace with your deployed contract address
+  //const NAME_TO_REGISTER = "example"; // Replace with the name you want to register
+  const NAME_TO_REGISTER = "rRpbk0XnuO7dI5tuD1DCPifYwnIpTTYeI8TEyAYkCdM="; // Replace with the name you want to register
+  const RECIPIENT_ADDRESS = await owner.getAddress(); // Replace with the address that should own the name
+  const TEXT_RECORD = "Hello from a hashsed Session Name Service name - sean!"; // Text record to set for the name
 
   const args = {
     SESSION_NAME_SERVICE_ADDRESS,

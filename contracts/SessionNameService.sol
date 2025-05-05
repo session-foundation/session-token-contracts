@@ -11,7 +11,7 @@ import {ISessionNameService} from "./interfaces/ISessionNameService.sol";
  * @title SessionNameService (SNS)
  * @notice L2 name service contract storing names as ERC-721 NFTs.
  * @author https://getsession.org/
- * @dev Names are stored lowercase and must be alphanumeric.
+ * @dev Names must contain only valid Base64 characters (A-Z, a-z, 0-9, +, /).
  * @dev Registration requires REGISTERER_ROLE or DEFAULT_ADMIN_ROLE.
  * @dev Optional renewal/expiration mechanism managed by admin.
  */
@@ -20,11 +20,11 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
 
     // Stores NFT metadata associated with a registered name.
     struct NameAssets {
-        uint256 id; // Token ID (keccak256 hash of the lowercase name)
+        uint256 id; // Token ID (keccak256 hash of the name)
         uint256 renewals; // Timestamp of the last renewal (or registration if never renewed)
     }
 
-    // Stores the original (lowercase) name associated with a token ID.
+    // Stores the original name associated with a token ID.
     // Necessary for cleanup during burn/expire operations.
     struct LinkedNames {
         string name;
@@ -41,9 +41,9 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
     // Flag controlled by admin to enable/disable the renewal and expiration features.
     bool public allowRenewals;
 
-    // Maps lowercase name string to its corresponding NFT asset data.
+    // Maps name string to its corresponding NFT asset data.
     mapping(string => NameAssets) public namesToAssets;
-    // Maps token ID (hash of name) back to its original lowercase name string.
+    // Maps token ID (hash of name) back to its original name string.
     mapping(uint256 => LinkedNames) public idsToNames;
     // Maps token ID to its associated text record.
     mapping(uint256 => string) public tokenIdToTextRecord;
@@ -73,12 +73,11 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
 
     /**
      * @notice Resolves a name to its associated text record.
-     * @param _name The name to resolve (case-insensitive).
+     * @param _name The name to resolve.
      * @return string The text record, or empty string if not set.
      * @dev Reverts if name not registered.
      */
     function resolve(string memory _name) external view override returns (string memory) {
-        _name = toLower(_name);
         uint256 hashOfName = uint256(keccak256(abi.encodePacked(_name)));
 
         if (bytes(idsToNames[hashOfName].name).length == 0) revert NameNotRegistered();
@@ -112,12 +111,11 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
 
     /**
      * @notice Renews a name registration, updating its renewal timestamp.
-     * @param _name Name to renew (case-insensitive).
+     * @param _name Name to renew.
      * @dev Requires allowRenewals to be true.
      * @dev Caller must be the owner of the name NFT.
      */
     function renewName(string memory _name) external isRenewalsAllowed {
-        _name = toLower(_name);
         NameAssets storage asset = namesToAssets[_name];
 
         if (asset.id == 0) revert NameNotRegistered();
@@ -132,12 +130,11 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
 
     /**
      * @notice Burns a name NFT if its expiration period has passed.
-     * @param _name Name to expire (case-insensitive).
+     * @param _name Name to expire.
      * @dev Requires allowRenewals to be true and caller to have REGISTERER_ROLE.
      * @dev Cleans up all relevant storage entries when successful.
      */
     function expireName(string memory _name) external isRenewalsAllowed onlyRegisterer {
-        _name = toLower(_name);
         NameAssets memory asset = namesToAssets[_name];
         uint256 tokenId = asset.id;
 
@@ -192,14 +189,13 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
     /**
      * @notice Registers a single name and mints the corresponding NFT.
      * @param to The address to receive the NFT.
-     * @param _name The name to register (case-insensitive, alphanumeric).
+     * @param _name The name to register (must be valid Base64 characters).
      * @return uint256 The token ID of the newly minted NFT.
-     * @dev Validates name (non-empty, alphanumeric, unique).
+     * @dev Validates name (non-empty, Base64, unique).
      */
     function registerName(address to, string memory _name) public onlyRegisterer returns (uint256) {
-        _name = toLower(_name);
         if (bytes(_name).length == 0) revert NullName();
-        if (!isAlphanumeric(_name)) revert UnsupportedCharacters();
+        if (!isValidBase64(_name)) revert UnsupportedCharacters();
         if (namesToAssets[_name].id != 0) revert NameAlreadyRegistered();
 
         uint256 newTokenId = uint256(keccak256(abi.encodePacked(_name)));
@@ -262,36 +258,22 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
     }
 
     /**
-     * @notice Converts an ASCII string to lowercase.
-     * @param str The input string.
-     * @return string The lowercase string.
-     */
-    function toLower(string memory str) private pure returns (string memory) {
-        bytes memory bStr = bytes(str);
-        bytes memory bLower = new bytes(bStr.length);
-        for (uint i = 0; i < bStr.length; i++) {
-            // ASCII 'A'=65, 'Z'=90
-            if ((uint8(bStr[i]) >= 65) && (uint8(bStr[i]) <= 90)) {
-                bLower[i] = bytes1(uint8(bStr[i]) + 32);
-            } else {
-                bLower[i] = bStr[i];
-            }
-        }
-        return string(bLower);
-    }
-
-    /**
-     * @notice Checks if a string contains only lowercase alphanumeric ASCII characters (a-z, 0-9).
+     * @notice Checks if a string contains only valid Base64 characters (A-Z, a-z, 0-9, +, /) and optional padding (=).
      * @param str The input string.
      * @return bool True if the string is valid, false otherwise.
      */
-    function isAlphanumeric(string memory str) private pure returns (bool) {
+    function isValidBase64(string memory str) private pure returns (bool) {
         bytes memory b = bytes(str);
         for (uint i = 0; i < b.length; i++) {
             bytes1 char = b[i];
-            // ASCII '0'=48, '9'=57, 'a'=97, 'z'=122
+            // Check if the character is A-Z, a-z, 0-9, +, /, or =
             if (
-                !(char >= 0x30 && char <= 0x39) && !(char >= 0x61 && char <= 0x7A) // 0-9 // a-z
+                !(char >= 0x41 && char <= 0x5A) && // A-Z
+                !(char >= 0x61 && char <= 0x7A) && // a-z
+                !(char >= 0x30 && char <= 0x39) && // 0-9
+                char != 0x2B && // +
+                char != 0x2F && // /
+                char != 0x3D // =
             ) {
                 return false;
             }

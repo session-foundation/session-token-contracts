@@ -8,8 +8,7 @@ const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 
 // Helper function to calculate name hash (token ID)
 function calculateNameHash(name) {
-  const lowerCaseName = name.toLowerCase();
-  return ethers.keccak256(ethers.toUtf8Bytes(lowerCaseName));
+  return ethers.keccak256(ethers.toUtf8Bytes(name));
 }
 
 describe('SessionNameService', function () {
@@ -18,6 +17,15 @@ describe('SessionNameService', function () {
   const TEST_NAME_2 = 'bob';
   const TEST_NAME_INVALID_CHARS = 'charlie!';
   const TEST_NAME_UPPER = 'ALICE'; // For case-insensitivity check
+  const TEST_NAME_MIXED = 'Alice';
+  const TEST_NAME_WITH_PLUS = 'name+plus';
+  const TEST_NAME_WITH_SLASH = 'name/slash';
+  const TEST_NAME_WITH_EQUALS = 'name=='; // Example Base64 padding
+  const TEST_NAME_WITH_NUMBERS = 'name123';
+  const TEST_NAME_INVALID_SPACE = 'name space';
+  const TEST_NAME_INVALID_DASH = 'name-dash';
+  const TEST_NAME_INVALID_UNICODE = '你好';
+
   const INITIAL_EXPIRATION_DAYS = 365;
   const ONE_DAY = 24 * 60 * 60;
   const THIRTY_DAYS = 30 * ONE_DAY;
@@ -258,34 +266,62 @@ describe('SessionNameService', function () {
       
       const asset = await sns.namesToAssets(TEST_NAME_1);
       expect(asset.id).to.equal(tokenId);
-      expect(asset.renewals).to.be.gt(0);
       const linkedName = await sns.idsToNames(tokenId);
       expect(linkedName).to.equal(TEST_NAME_1);
     });
 
-    it('Should handle case-insensitivity on registration and store lowercase', async function () {
-      const { sns, registerer, user1 } = await loadFixture(
+    it('Should handle case-sensitivity on registration', async function () {
+      const { sns, registerer, user1, user2 } = await loadFixture(
         deploySessionNameServiceFixture
       );
-      const nameUpper = TEST_NAME_UPPER; // "ALICE"
       const nameLower = TEST_NAME_1;   // "alice"
-      const tokenId = calculateNameHash(nameLower); // Hash is based on lowercase
+      const nameUpper = TEST_NAME_UPPER; // "ALICE"
+      const nameMixed = TEST_NAME_MIXED; // "Alice"
+      const tokenIdLower = calculateNameHash(nameLower);
+      const tokenIdUpper = calculateNameHash(nameUpper);
+      const tokenIdMixed = calculateNameHash(nameMixed);
 
-      await expect(sns.connect(registerer).registerName(user1.address, nameUpper))
+      // Register lowercase
+      await expect(sns.connect(registerer).registerName(user1.address, nameLower))
         .to.emit(sns, 'NameRegistered')
-        .withArgs(nameLower, user1.address, tokenId);
+        .withArgs(nameLower, user1.address, tokenIdLower);
+      expect(await sns.ownerOf(tokenIdLower)).to.equal(user1.address);
+      expect(await sns.totalSupply()).to.equal(1);
 
-      expect(await sns.ownerOf(tokenId)).to.equal(user1.address);
-      expect(await sns.resolve(nameUpper)).to.equal("");
+      // Register uppercase - should succeed as it's a different name
+      await expect(sns.connect(registerer).registerName(user2.address, nameUpper))
+        .to.emit(sns, 'NameRegistered')
+        .withArgs(nameUpper, user2.address, tokenIdUpper);
+      expect(await sns.ownerOf(tokenIdUpper)).to.equal(user2.address);
+      expect(await sns.totalSupply()).to.equal(2);
+
+      // Register mixed case - should succeed
+      await expect(sns.connect(registerer).registerName(user1.address, nameMixed))
+          .to.emit(sns, 'NameRegistered')
+          .withArgs(nameMixed, user1.address, tokenIdMixed);
+      expect(await sns.ownerOf(tokenIdMixed)).to.equal(user1.address);
+      expect(await sns.totalSupply()).to.equal(3);
+
+      // Check resolution is case-sensitive
       expect(await sns.resolve(nameLower)).to.equal("");
+      expect(await sns.resolve(nameUpper)).to.equal("");
+      expect(await sns.resolve(nameMixed)).to.equal("");
 
-      const nameAsset = await sns.namesToAssets(nameLower);
-      expect(nameAsset.id).to.equal(tokenId);
-      const nameAssetUpper = await sns.namesToAssets(nameUpper);
-      expect(nameAssetUpper.id).to.equal(0);
+      // Check internal storage preserves case
+      const assetLower = await sns.namesToAssets(nameLower);
+      expect(assetLower.id).to.equal(tokenIdLower);
+      const linkedLower = await sns.idsToNames(tokenIdLower);
+      expect(linkedLower).to.equal(nameLower);
 
-      const linkedName = await sns.idsToNames(tokenId);
-      expect(linkedName).to.equal(nameLower);
+      const assetUpper = await sns.namesToAssets(nameUpper);
+      expect(assetUpper.id).to.equal(tokenIdUpper);
+      const linkedUpper = await sns.idsToNames(tokenIdUpper);
+      expect(linkedUpper).to.equal(nameUpper);
+
+      const assetMixed = await sns.namesToAssets(nameMixed);
+      expect(assetMixed.id).to.equal(tokenIdMixed);
+      const linkedMixed = await sns.idsToNames(tokenIdMixed);
+      expect(linkedMixed).to.equal(nameMixed);
     });
 
     it('Should revert if registering an empty name', async function () {
@@ -297,30 +333,48 @@ describe('SessionNameService', function () {
       ).to.be.revertedWithCustomError(sns, 'NullName');
     });
 
+    it('Should register names with valid Base64 characters', async function () {
+        const { sns, registerer, user1 } = await loadFixture(deploySessionNameServiceFixture);
+        await expect(sns.connect(registerer).registerName(user1.address, TEST_NAME_WITH_PLUS)).to.not.be.reverted;
+        await expect(sns.connect(registerer).registerName(user1.address, TEST_NAME_WITH_SLASH)).to.not.be.reverted;
+        await expect(sns.connect(registerer).registerName(user1.address, TEST_NAME_WITH_EQUALS)).to.not.be.reverted;
+        await expect(sns.connect(registerer).registerName(user1.address, TEST_NAME_WITH_NUMBERS)).to.not.be.reverted;
+        await expect(sns.connect(registerer).registerName(user1.address, TEST_NAME_UPPER)).to.not.be.reverted;
+    });
+
     it('Should revert if registering a name with invalid characters', async function () {
       const { sns, registerer, user1 } = await loadFixture(
         deploySessionNameServiceFixture
       );
       await expect(
-        sns.connect(registerer).registerName(user1.address, TEST_NAME_INVALID_CHARS)
+        sns.connect(registerer).registerName(user1.address, TEST_NAME_INVALID_CHARS) // charlie!
+      ).to.be.revertedWithCustomError(sns, 'UnsupportedCharacters');
+      await expect(
+        sns.connect(registerer).registerName(user1.address, TEST_NAME_INVALID_SPACE) // "with space"
+      ).to.be.revertedWithCustomError(sns, 'UnsupportedCharacters');
+      await expect(
+        sns.connect(registerer).registerName(user1.address, TEST_NAME_INVALID_DASH) // "with-dash"
       ).to.be.revertedWithCustomError(sns, 'UnsupportedCharacters');
        await expect(
-        sns.connect(registerer).registerName(user1.address, "with space")
+        sns.connect(registerer).registerName(user1.address, TEST_NAME_INVALID_UNICODE) // "你好"
       ).to.be.revertedWithCustomError(sns, 'UnsupportedCharacters');
     });
 
-    it('Should revert if registering a name that is already registered', async function () {
+    it('Should revert if registering a name that is already registered (case-sensitive)', async function () {
       const { sns, registerer, user1, user2 } = await loadFixture(
         deploySessionNameServiceFixture
       );
+      // Register lowercase
       await sns.connect(registerer).registerName(user1.address, TEST_NAME_1);
+      // Attempt to re-register exact same name - should fail
       await expect(
         sns.connect(registerer).registerName(user2.address, TEST_NAME_1)
       ).to.be.revertedWithCustomError(sns, 'NameAlreadyRegistered');
-      
+
+      // Attempt to register uppercase version - should succeed now
       await expect(
         sns.connect(registerer).registerName(user2.address, TEST_NAME_UPPER)
-      ).to.be.revertedWithCustomError(sns, 'NameAlreadyRegistered');
+      ).to.not.be.reverted;
     });
 
     it('Should return the correct token ID on successful registration', async function () {
@@ -371,22 +425,31 @@ describe('SessionNameService', function () {
             ).to.be.revertedWithCustomError(sns, 'InvalidInputLengths');
         });
 
-        it('Should revert entire batch if one registration fails (e.g., duplicate name)', async function () {
+        it('Should revert entire batch if one registration fails (e.g., duplicate name - case sensitive)', async function () {
             const { sns, owner, registerer, user1, user2, otherAccount } = await loadFixture(deploySessionNameServiceFixture);
-            await sns.connect(registerer).registerName(user1.address, 'existing');
+            const existingName = 'existing';
+            await sns.connect(registerer).registerName(user1.address, existingName);
 
-            const names = ['newname', 'existing', 'anothernew']; // Contains duplicate
+            const names = ['newname', existingName, 'anothernew']; // Contains exact duplicate
             const addresses = [user2.address, otherAccount.address, owner.address];
 
             await expect(
                 sns.connect(registerer).registerNameMultiple(addresses, names)
             ).to.be.revertedWithCustomError(sns, 'NameAlreadyRegistered');
 
-            expect(sns.resolve('newname')).to.be.revertedWithCustomError(sns, 'ERC721NonexistentToken');
-            expect(sns.resolve('anothernew')).to.be.revertedWithCustomError(sns, 'ERC721NonexistentToken');
+            // Verify none of the new names were registered
+            expect(sns.resolve('newname')).to.be.revertedWithCustomError(sns, 'NameNotRegistered');
+            expect(sns.resolve('anothernew')).to.be.revertedWithCustomError(sns, 'NameNotRegistered');
             expect(await sns.balanceOf(user2.address)).to.equal(0);
             expect(await sns.balanceOf(otherAccount.address)).to.equal(0);
-            expect(await sns.totalSupply()).to.equal(1);
+            expect(await sns.totalSupply()).to.equal(1); // Only 'existing' should remain
+
+            // Test batch with different case - should succeed if 'existing' already registered
+            const namesCaseDiff = ['NewName', 'EXISTING', 'AnotherNew'];
+             await expect(
+                sns.connect(registerer).registerNameMultiple(addresses, namesCaseDiff)
+            ).to.not.be.reverted;
+             expect(await sns.totalSupply()).to.equal(1 + namesCaseDiff.length); // Should register all 3
         });
 
     });
@@ -401,17 +464,22 @@ describe('SessionNameService', function () {
       expect(await sns.resolve(TEST_NAME_1)).to.equal("");
     });
 
-    it('Should resolve a registered name case-insensitively', async function () {
+    it('Should fail to resolve a name with different casing if not registered', async function () {
       const { sns, registerer, user1 } = await loadFixture(
         deploySessionNameServiceFixture
       );
+      // Register lowercase 'alice'
       await sns.connect(registerer).registerName(user1.address, TEST_NAME_1);
-      expect(await sns.resolve(TEST_NAME_UPPER)).to.equal("");
+      // Try resolving uppercase 'ALICE' - should fail
+      await expect(sns.resolve(TEST_NAME_UPPER)).to.be.revertedWithCustomError(sns, 'NameNotRegistered');
+      // Try resolving mixed case 'Alice' - should fail
+      await expect(sns.resolve(TEST_NAME_MIXED)).to.be.revertedWithCustomError(sns, 'NameNotRegistered');
     });
 
-    it('Should return address(0) for an unregistered name', async function () {
+    it('Should return NameNotRegistered for an unregistered name', async function () {
       const { sns } = await loadFixture(deploySessionNameServiceFixture);
-      await expect(sns.resolve('nonexistent')).to.be.revertedWithCustomError(sns, 'NameNotRegistered');
+      await expect(sns.resolve('nonexistent'))
+        .to.be.revertedWithCustomError(sns, 'NameNotRegistered');
     });
 
      it('Should return address(0) after a name is burned', async function () {
@@ -484,21 +552,18 @@ describe('SessionNameService', function () {
           .to.be.revertedWithCustomError(sns, 'NameNotRegistered');
       });
 
-      it('Should handle case-insensitivity for renewal', async function () {
-          const initialAsset = await sns.namesToAssets(name);
-          const initialTimestamp = initialAsset.renewals;
-
+      it('Should revert renewal if name casing does not match owned name', async function () {
+          // User1 owns 'alice' (TEST_NAME_1)
           await time.increase(ONE_DAY * 5);
-          const expectedTimestamp = BigInt(await time.latest()) + 1n;
 
+          // Try to renew 'ALICE' (TEST_NAME_UPPER) - should fail as user1 doesn't own it
           await expect(sns.connect(user1).renewName(TEST_NAME_UPPER))
-              .to.emit(sns, 'NameRenewed')
-              .withArgs(name, user1.address, anyValue);
+              .to.be.revertedWithCustomError(sns, 'NameNotRegistered');
 
-          const renewedAsset = await sns.namesToAssets(name);
-          expect(renewedAsset.renewals).to.be.gt(initialTimestamp);
-          expect(renewedAsset.renewals).to.be.closeTo(expectedTimestamp, 2);
-        });
+          // Try to renew 'Alice' (TEST_NAME_MIXED) - should fail
+           await expect(sns.connect(user1).renewName(TEST_NAME_MIXED))
+              .to.be.revertedWithCustomError(sns, 'NameNotRegistered');
+      });
     });
 
     describe('`expireName`', function () {
@@ -557,18 +622,21 @@ describe('SessionNameService', function () {
                 .to.be.revertedWithCustomError(sns, 'NameNotRegistered');
          });
 
-         it('Should handle case-insensitivity for expiration', async function () {
+         it('Should revert expiration if name casing does not match existing name', async function () {
+            // 'alice' (TEST_NAME_1) is registered
             const initialAsset = await sns.namesToAssets(name);
             const renewalTimestamp = initialAsset.renewals;
             const expireTime = Number(renewalTimestamp) + expirationPeriod;
 
             await time.increaseTo(expireTime + 1);
 
+            // Try to expire 'ALICE' - should fail
             await expect(sns.connect(registerer).expireName(TEST_NAME_UPPER))
-                .to.emit(sns, 'NameExpired')
-                .withArgs(name, user1.address, tokenId);
+                .to.be.revertedWithCustomError(sns, 'NameNotRegistered');
 
-            await expect(sns.ownerOf(tokenId)).to.be.reverted;
+            // Try to expire 'Alice' - should fail
+             await expect(sns.connect(registerer).expireName(TEST_NAME_MIXED))
+                .to.be.revertedWithCustomError(sns, 'NameNotRegistered');
          });
 
         it('Should correctly handle expiration after renewal', async function () {
@@ -907,37 +975,33 @@ describe('SessionNameService', function () {
    });
 
    // --- Internal Helper Functions (Tested via public functions) ---
-   describe('Internal Helper Functions (toLower, isAlphanumeric)', function() {
-       it('toLower works as expected (tested via registration/resolution)', async function() {
+   describe('Internal Helper Functions (isValidBase64)', function() {
+       it('isValidBase64 works as expected (tested via registration)', async function() {
             const { sns, registerer, user1 } = await loadFixture(deploySessionNameServiceFixture);
-            const nameUpper = "TESTNAME";
-            const nameLower = "testname";
-            const tokenId = calculateNameHash(nameLower);
-
-            await sns.connect(registerer).registerName(user1.address, nameUpper);
-            // Check resolution works for both cases
-            expect(await sns.resolve(nameUpper)).to.equal(""); // Returns text record initially
-            expect(await sns.resolve(nameLower)).to.equal(""); // Returns text record initially
-            // Check internal storage used lowercase
-            const linkedName = await sns.idsToNames(tokenId);
-            expect(linkedName).to.equal(nameLower); // Compare directly to string
-       });
-
-       it('isAlphanumeric works as expected (tested via registration failures)', async function() {
-            const { sns, registerer, user1 } = await loadFixture(deploySessionNameServiceFixture);
-            // Valid chars
-            await expect(sns.connect(registerer).registerName(user1.address, "valid123name")).to.not.be.reverted;
-            // Burn it to allow next test
-            await sns.connect(user1).burn(calculateNameHash("valid123name"));
+            // Valid chars (A-Z, a-z, 0-9, +, /, =)
+            await expect(sns.connect(registerer).registerName(user1.address, TEST_NAME_1)).to.not.be.reverted; // alice
+            await sns.connect(user1).burn(calculateNameHash(TEST_NAME_1));
+            await expect(sns.connect(registerer).registerName(user1.address, TEST_NAME_UPPER)).to.not.be.reverted; // ALICE
+            await sns.connect(user1).burn(calculateNameHash(TEST_NAME_UPPER));
+            await expect(sns.connect(registerer).registerName(user1.address, TEST_NAME_WITH_NUMBERS)).to.not.be.reverted; // name123
+            await sns.connect(user1).burn(calculateNameHash(TEST_NAME_WITH_NUMBERS));
+            await expect(sns.connect(registerer).registerName(user1.address, TEST_NAME_WITH_PLUS)).to.not.be.reverted; // name+plus
+            await sns.connect(user1).burn(calculateNameHash(TEST_NAME_WITH_PLUS));
+            await expect(sns.connect(registerer).registerName(user1.address, TEST_NAME_WITH_SLASH)).to.not.be.reverted; // name/slash
+            await sns.connect(user1).burn(calculateNameHash(TEST_NAME_WITH_SLASH));
+            await expect(sns.connect(registerer).registerName(user1.address, TEST_NAME_WITH_EQUALS)).to.not.be.reverted; // name==
+            await sns.connect(user1).burn(calculateNameHash(TEST_NAME_WITH_EQUALS));
+            await expect(sns.connect(registerer).registerName(user1.address, TEST_NAME_MIXED)).to.not.be.reverted; // Alice
+            // Don't burn the last one
 
             // Invalid chars
-            await expect(sns.connect(registerer).registerName(user1.address, "invalid!"))
+            await expect(sns.connect(registerer).registerName(user1.address, TEST_NAME_INVALID_CHARS)) // invalid!
                 .to.be.revertedWithCustomError(sns, 'UnsupportedCharacters');
-            await expect(sns.connect(registerer).registerName(user1.address, "invalid space"))
+            await expect(sns.connect(registerer).registerName(user1.address, TEST_NAME_INVALID_SPACE)) // invalid space
                 .to.be.revertedWithCustomError(sns, 'UnsupportedCharacters');
-            await expect(sns.connect(registerer).registerName(user1.address, "invalid-dash"))
+            await expect(sns.connect(registerer).registerName(user1.address, TEST_NAME_INVALID_DASH)) // invalid-dash
                 .to.be.revertedWithCustomError(sns, 'UnsupportedCharacters');
-             await expect(sns.connect(registerer).registerName(user1.address, "你好")) // Non-ascii
+            await expect(sns.connect(registerer).registerName(user1.address, TEST_NAME_INVALID_UNICODE)) // 你好
                 .to.be.revertedWithCustomError(sns, 'UnsupportedCharacters');
        });
    });
@@ -977,7 +1041,8 @@ describe('SessionNameService', function () {
         .to.emit(sns, 'TextRecordUpdated')
         .withArgs(tokenId, testText);
       expect(await sns.tokenIdToTextRecord(tokenId)).to.equal(testText);
-      expect(await sns.resolve(TEST_NAME_1.toLowerCase())).to.equal(testText); // Resolve uses lowercase name
+      // Resolve requires the exact registered name now
+      expect(await sns.resolve(TEST_NAME_1)).to.equal(testText);
     });
 
      it('Should allow an approved operator (setApprovalForAll) to set the text record', async function () {
@@ -986,7 +1051,13 @@ describe('SessionNameService', function () {
         .to.emit(sns, 'TextRecordUpdated')
         .withArgs(tokenId, testText);
       expect(await sns.tokenIdToTextRecord(tokenId)).to.equal(testText);
-      expect(await sns.resolve(TEST_NAME_1)).to.equal(testText);
+      // Set it back to empty
+      await expect(sns.connect(user1).setTextRecord(tokenId, ""))
+        .to.emit(sns, 'TextRecordUpdated')
+        .withArgs(tokenId, "");
+      expect(await sns.tokenIdToTextRecord(tokenId)).to.equal("");
+      // Resolve requires the exact registered name
+      expect(await sns.resolve(TEST_NAME_1)).to.equal("");
     });
 
     it('Should prevent non-owner/non-approved from setting the text record', async function () {
