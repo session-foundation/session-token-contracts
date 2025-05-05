@@ -30,6 +30,10 @@ describe('SessionNameService', function () {
   const ONE_DAY = 24 * 60 * 60;
   const THIRTY_DAYS = 30 * ONE_DAY;
   const YEAR_PLUS_ONE_DAY = (INITIAL_EXPIRATION_DAYS + 1) * ONE_DAY;
+  
+  // Record types
+  const SESSION_RECORD_TYPE = 1;
+  const LOKINET_RECORD_TYPE = 3;
 
   async function deploySessionNameServiceFixture() {
     const [owner, registerer, user1, user2, otherAccount] =
@@ -153,8 +157,8 @@ describe('SessionNameService', function () {
 
       expect(await sns.ownerOf(calculateNameHash(names[0]))).to.equal(addresses[0]);
       expect(await sns.ownerOf(calculateNameHash(names[1]))).to.equal(addresses[1]);
-      expect(await sns.resolve(names[0])).to.equal("");
-      expect(await sns.resolve(names[1])).to.equal("");
+      expect(await sns.resolve(names[0], SESSION_RECORD_TYPE)).to.equal("");
+      expect(await sns.resolve(names[1], SESSION_RECORD_TYPE)).to.equal("");
       expect(await sns.balanceOf(user1.address)).to.equal(1);
       expect(await sns.balanceOf(user2.address)).to.equal(1);
       expect(await sns.totalSupply()).to.equal(2);
@@ -260,7 +264,7 @@ describe('SessionNameService', function () {
         .withArgs(TEST_NAME_1, user1.address, tokenId);
 
       expect(await sns.ownerOf(tokenId)).to.equal(user1.address);
-      expect(await sns.resolve(TEST_NAME_1)).to.equal("");
+      expect(await sns.resolve(TEST_NAME_1, SESSION_RECORD_TYPE)).to.equal("");
       expect(await sns.balanceOf(user1.address)).to.equal(1);
       expect(await sns.totalSupply()).to.equal(1);
       
@@ -303,9 +307,9 @@ describe('SessionNameService', function () {
       expect(await sns.totalSupply()).to.equal(3);
 
       // Check resolution is case-sensitive
-      expect(await sns.resolve(nameLower)).to.equal("");
-      expect(await sns.resolve(nameUpper)).to.equal("");
-      expect(await sns.resolve(nameMixed)).to.equal("");
+      expect(await sns.resolve(nameLower, SESSION_RECORD_TYPE)).to.equal("");
+      expect(await sns.resolve(nameUpper, SESSION_RECORD_TYPE)).to.equal("");
+      expect(await sns.resolve(nameMixed, SESSION_RECORD_TYPE)).to.equal("");
 
       // Check internal storage preserves case
       const assetLower = await sns.namesToAssets(nameLower);
@@ -408,8 +412,8 @@ describe('SessionNameService', function () {
 
             expect(await sns.ownerOf(tokenId1)).to.equal(addresses[0]);
             expect(await sns.ownerOf(tokenId2)).to.equal(addresses[1]);
-            expect(await sns.resolve(names[0])).to.equal("");
-            expect(await sns.resolve(names[1])).to.equal("");
+            expect(await sns.resolve(names[0], SESSION_RECORD_TYPE)).to.equal("");
+            expect(await sns.resolve(names[1], SESSION_RECORD_TYPE)).to.equal("");
             expect(await sns.balanceOf(user1.address)).to.equal(1);
             expect(await sns.balanceOf(user2.address)).to.equal(1);
             expect(await sns.totalSupply()).to.equal(2);
@@ -438,8 +442,10 @@ describe('SessionNameService', function () {
             ).to.be.revertedWithCustomError(sns, 'NameAlreadyRegistered');
 
             // Verify none of the new names were registered
-            expect(sns.resolve('newname')).to.be.revertedWithCustomError(sns, 'NameNotRegistered');
-            expect(sns.resolve('anothernew')).to.be.revertedWithCustomError(sns, 'NameNotRegistered');
+            await expect(sns.resolve('newname', SESSION_RECORD_TYPE))
+                .to.be.revertedWithCustomError(sns, 'NameNotRegistered');
+            await expect(sns.resolve('anothernew', SESSION_RECORD_TYPE))
+                .to.be.revertedWithCustomError(sns, 'NameNotRegistered');
             expect(await sns.balanceOf(user2.address)).to.equal(0);
             expect(await sns.balanceOf(otherAccount.address)).to.equal(0);
             expect(await sns.totalSupply()).to.equal(1); // Only 'existing' should remain
@@ -461,37 +467,73 @@ describe('SessionNameService', function () {
         deploySessionNameServiceFixture
       );
       await sns.connect(registerer).registerName(user1.address, TEST_NAME_1);
-      expect(await sns.resolve(TEST_NAME_1)).to.equal("");
+      expect(await sns.resolve(TEST_NAME_1, SESSION_RECORD_TYPE)).to.equal("");
+      expect(await sns.resolve(TEST_NAME_1, LOKINET_RECORD_TYPE)).to.equal("");
     });
 
-    it('Should fail to resolve a name with different casing if not registered', async function () {
+    it('Should return empty string for a name with different casing if not registered', async function () {
       const { sns, registerer, user1 } = await loadFixture(
         deploySessionNameServiceFixture
       );
       // Register lowercase 'alice'
       await sns.connect(registerer).registerName(user1.address, TEST_NAME_1);
-      // Try resolving uppercase 'ALICE' - should fail
-      await expect(sns.resolve(TEST_NAME_UPPER)).to.be.revertedWithCustomError(sns, 'NameNotRegistered');
-      // Try resolving mixed case 'Alice' - should fail
-      await expect(sns.resolve(TEST_NAME_MIXED)).to.be.revertedWithCustomError(sns, 'NameNotRegistered');
-    });
-
-    it('Should return NameNotRegistered for an unregistered name', async function () {
-      const { sns } = await loadFixture(deploySessionNameServiceFixture);
-      await expect(sns.resolve('nonexistent'))
+      // Try resolving uppercase 'ALICE' - should revert with NameNotRegistered
+      await expect(sns.resolve(TEST_NAME_UPPER, SESSION_RECORD_TYPE))
+        .to.be.revertedWithCustomError(sns, 'NameNotRegistered');
+      await expect(sns.resolve(TEST_NAME_MIXED, SESSION_RECORD_TYPE))
         .to.be.revertedWithCustomError(sns, 'NameNotRegistered');
     });
 
-     it('Should return address(0) after a name is burned', async function () {
+    it('Should revert with NameNotRegistered for an unregistered name', async function () {
+      const { sns } = await loadFixture(deploySessionNameServiceFixture);
+      await expect(sns.resolve('nonexistent', SESSION_RECORD_TYPE))
+        .to.be.revertedWithCustomError(sns, 'NameNotRegistered');
+      await expect(sns.resolve('nonexistent', LOKINET_RECORD_TYPE))
+        .to.be.revertedWithCustomError(sns, 'NameNotRegistered');
+    });
+
+    it('Should revert with NameNotRegistered after a name is burned', async function () {
       const { sns, registerer, user1 } = await loadFixture(deploySessionNameServiceFixture);
       const name = TEST_NAME_1;
       await sns.connect(registerer).registerName(user1.address, name);
       const tokenId = calculateNameHash(name);
-      expect(await sns.resolve(name)).to.equal("");
+      expect(await sns.resolve(name, SESSION_RECORD_TYPE)).to.equal("");
 
       await sns.connect(user1).burn(tokenId);
 
-      await expect(sns.resolve(name)).to.be.revertedWithCustomError(sns, 'NameNotRegistered');
+      await expect(sns.resolve(name, SESSION_RECORD_TYPE))
+        .to.be.revertedWithCustomError(sns, 'NameNotRegistered');
+      await expect(sns.resolve(name, LOKINET_RECORD_TYPE))
+        .to.be.revertedWithCustomError(sns, 'NameNotRegistered');
+    });
+
+    it('Should return empty string for invalid record type', async function () {
+      const { sns, registerer, user1 } = await loadFixture(deploySessionNameServiceFixture);
+      await sns.connect(registerer).registerName(user1.address, TEST_NAME_1);
+      
+      // Try with invalid record type (2 is unused)
+      expect(await sns.resolve(TEST_NAME_1, 2)).to.equal("");
+      
+      // Try with another invalid record type
+      expect(await sns.resolve(TEST_NAME_1, 4)).to.equal("");
+    });
+
+    it('Should resolve session and lokinet names separately', async function () {
+      const { sns, registerer, user1 } = await loadFixture(deploySessionNameServiceFixture);
+      const name = TEST_NAME_1;
+      await sns.connect(registerer).registerName(user1.address, name);
+      const tokenId = calculateNameHash(name);
+      
+      const sessionText = "session.name.record";
+      const lokinetText = "lokinet.address.record";
+      
+      // Set different record types
+      await sns.connect(user1).setTextRecord(tokenId, SESSION_RECORD_TYPE, sessionText);
+      await sns.connect(user1).setTextRecord(tokenId, LOKINET_RECORD_TYPE, lokinetText);
+      
+      // Verify they're resolved separately
+      expect(await sns.resolve(name, SESSION_RECORD_TYPE)).to.equal(sessionText);
+      expect(await sns.resolve(name, LOKINET_RECORD_TYPE)).to.equal(lokinetText);
     });
   });
 
@@ -690,8 +732,8 @@ describe('SessionNameService', function () {
       await sns.connect(registerer).registerName(user1.address, TEST_NAME_1);
       tokenId = calculateNameHash(TEST_NAME_1);
       
-      await sns.connect(user1).setTextRecord(tokenId, "some text");
-      expect(await sns.resolve(TEST_NAME_1)).to.equal("some text");
+      await sns.connect(user1).setTextRecord(tokenId, SESSION_RECORD_TYPE, "some text");
+      expect(await sns.resolve(TEST_NAME_1, SESSION_RECORD_TYPE)).to.equal("some text");
       expect(await sns.totalSupply()).to.equal(1);
     });
 
@@ -709,12 +751,16 @@ describe('SessionNameService', function () {
           'ERC721NonexistentToken'
       );
       
-      await expect(sns.resolve(TEST_NAME_1)).to.be.revertedWithCustomError(
-        sns,
-        'NameNotRegistered'
-      );
+      // After burning, resolve should now revert with NameNotRegistered
+      await expect(sns.resolve(TEST_NAME_1, SESSION_RECORD_TYPE))
+        .to.be.revertedWithCustomError(sns, 'NameNotRegistered');
+      await expect(sns.resolve(TEST_NAME_1, LOKINET_RECORD_TYPE))
+        .to.be.revertedWithCustomError(sns, 'NameNotRegistered');
       
-      expect(await sns.tokenIdToTextRecord(tokenId)).to.equal("");
+      // Just verify that both fields in the TextRecords struct are empty strings
+      const textRecords = await sns.tokenIdToTextRecord(tokenId);
+      expect(textRecords.sessionName).to.equal("");
+      expect(textRecords.lokinetName).to.equal("");
       
       const asset = await sns.namesToAssets(TEST_NAME_1);
       expect(asset.id).to.equal(0);
@@ -775,7 +821,8 @@ describe('SessionNameService', function () {
 
         expect(await sns.ownerOf(tokenId)).to.equal(newOwner.address);
         expect(await sns.totalSupply()).to.equal(1);
-        expect(await sns.resolve(name)).to.equal("");
+        // After re-registration, it should have an empty record again
+        expect(await sns.resolve(name, SESSION_RECORD_TYPE)).to.equal("");
     });
   });
 
@@ -848,7 +895,7 @@ describe('SessionNameService', function () {
 
         await sns.connect(registerer).registerName(user1.address, name);
         tokenId = calculateNameHash(name);
-        await sns.connect(user1).setTextRecord(tokenId, "original text");
+        await sns.connect(user1).setTextRecord(tokenId, SESSION_RECORD_TYPE, "original text");
         await sns.connect(owner).flipRenewals();
       });
 
@@ -858,7 +905,7 @@ describe('SessionNameService', function () {
             .to.emit(sns, 'Transfer')
             .withArgs(user1.address, user2.address, tokenId);
         expect(await sns.ownerOf(tokenId)).to.equal(user2.address);
-        expect(await sns.resolve(name)).to.equal("original text");
+        expect(await sns.resolve(name, SESSION_RECORD_TYPE)).to.equal("original text");
         expect(await sns.balanceOf(user1.address)).to.equal(0);
         expect(await sns.balanceOf(user2.address)).to.equal(1);
       });
@@ -868,7 +915,7 @@ describe('SessionNameService', function () {
             .to.emit(sns, 'Transfer')
             .withArgs(user1.address, user2.address, tokenId);
         expect(await sns.ownerOf(tokenId)).to.equal(user2.address);
-        expect(await sns.resolve(name)).to.equal("original text");
+        expect(await sns.resolve(name, SESSION_RECORD_TYPE)).to.equal("original text");
       });
 
       it('Should allow approved address to transfer using transferFrom', async function () {
@@ -878,7 +925,7 @@ describe('SessionNameService', function () {
             .to.emit(sns, 'Transfer')
             .withArgs(user1.address, otherAccount.address, tokenId);
         expect(await sns.ownerOf(tokenId)).to.equal(otherAccount.address);
-        expect(await sns.resolve(name)).to.equal("original text");
+        expect(await sns.resolve(name, SESSION_RECORD_TYPE)).to.equal("original text");
       });
 
        it('Should allow approved address to transfer using safeTransferFrom', async function () {
@@ -887,7 +934,7 @@ describe('SessionNameService', function () {
             .to.emit(sns, 'Transfer')
             .withArgs(user1.address, otherAccount.address, tokenId);
         expect(await sns.ownerOf(tokenId)).to.equal(otherAccount.address);
-        expect(await sns.resolve(name)).to.equal("original text");
+        expect(await sns.resolve(name, SESSION_RECORD_TYPE)).to.equal("original text");
       });
 
       it('Should allow approved operator (setApprovalForAll) to transfer', async function () {
@@ -897,7 +944,7 @@ describe('SessionNameService', function () {
             .to.emit(sns, 'Transfer')
             .withArgs(user1.address, otherAccount.address, tokenId);
         expect(await sns.ownerOf(tokenId)).to.equal(otherAccount.address);
-        expect(await sns.resolve(name)).to.equal("original text");
+        expect(await sns.resolve(name, SESSION_RECORD_TYPE)).to.equal("original text");
       });
 
       it('Should revert transferFrom if caller is not owner or approved', async function () {
@@ -925,11 +972,15 @@ describe('SessionNameService', function () {
         expect(await sns.ownerOf(tokenId)).to.equal(user2.address);
 
         const newText = "text set by new owner";
-        await expect(sns.connect(user2).setTextRecord(tokenId, newText))
+        await expect(sns.connect(user2).setTextRecord(tokenId, SESSION_RECORD_TYPE, newText))
             .to.emit(sns, 'TextRecordUpdated')
-            .withArgs(tokenId, newText);
-        expect(await sns.resolve(name)).to.equal(newText);
-        expect(await sns.tokenIdToTextRecord(tokenId)).to.equal(newText);
+            .withArgs(tokenId, SESSION_RECORD_TYPE, newText);
+        expect(await sns.resolve(name, SESSION_RECORD_TYPE)).to.equal(newText);
+        
+        // Check the TextRecords fields directly
+        const textRecords = await sns.tokenIdToTextRecord(tokenId);
+        expect(textRecords.sessionName).to.equal(newText);
+        expect(textRecords.lokinetName).to.equal("");
       });
 
       it('Should allow the new owner to renew after transfer', async function () {
@@ -1023,70 +1074,223 @@ describe('SessionNameService', function () {
       await sns.connect(registerer).registerName(user1.address, TEST_NAME_1);
       tokenId = calculateNameHash(TEST_NAME_1);
       // Initial check: resolve returns empty string
-      expect(await sns.resolve(TEST_NAME_1)).to.equal("");
+      expect(await sns.resolve(TEST_NAME_1, SESSION_RECORD_TYPE)).to.equal("");
+      expect(await sns.resolve(TEST_NAME_1, LOKINET_RECORD_TYPE)).to.equal("");
     });
 
-    it('Should allow the owner to set the text record', async function () {
-      await expect(sns.connect(user1).setTextRecord(tokenId, testText))
+    it('Should allow the owner to set the session text record', async function () {
+      await expect(sns.connect(user1).setTextRecord(tokenId, SESSION_RECORD_TYPE, testText))
         .to.emit(sns, 'TextRecordUpdated')
-        .withArgs(tokenId, testText);
-      expect(await sns.tokenIdToTextRecord(tokenId)).to.equal(testText);
-      expect(await sns.resolve(TEST_NAME_1)).to.equal(testText); // Resolve should now return the text
+        .withArgs(tokenId, SESSION_RECORD_TYPE, testText);
+      
+      // Check that the session record was set but lokinet is still empty
+      expect(await sns.resolve(TEST_NAME_1, SESSION_RECORD_TYPE)).to.equal(testText);
+      expect(await sns.resolve(TEST_NAME_1, LOKINET_RECORD_TYPE)).to.equal("");
     });
 
-    it('Should allow an approved address to set the text record', async function () {
-      const testText = "approved text";
+    it('Should allow the owner to set the lokinet text record', async function () {
+      await expect(sns.connect(user1).setTextRecord(tokenId, LOKINET_RECORD_TYPE, testText))
+        .to.emit(sns, 'TextRecordUpdated')
+        .withArgs(tokenId, LOKINET_RECORD_TYPE, testText);
+      
+      // Check that the lokinet record was set but session is still empty
+      expect(await sns.resolve(TEST_NAME_1, SESSION_RECORD_TYPE)).to.equal("");
+      expect(await sns.resolve(TEST_NAME_1, LOKINET_RECORD_TYPE)).to.equal(testText);
+    });
+
+    it('Should allow an approved address to set text records of different types', async function () {
+      const sessionText = "approved session text";
+      const lokinetText = "approved lokinet text";
+      
       await sns.connect(user1).approve(user2.address, tokenId);
-      await expect(sns.connect(user2).setTextRecord(tokenId, testText))
+      
+      await expect(sns.connect(user2).setTextRecord(tokenId, SESSION_RECORD_TYPE, sessionText))
         .to.emit(sns, 'TextRecordUpdated')
-        .withArgs(tokenId, testText);
-      expect(await sns.tokenIdToTextRecord(tokenId)).to.equal(testText);
-      // Resolve requires the exact registered name now
-      expect(await sns.resolve(TEST_NAME_1)).to.equal(testText);
+        .withArgs(tokenId, SESSION_RECORD_TYPE, sessionText);
+      
+      await expect(sns.connect(user2).setTextRecord(tokenId, LOKINET_RECORD_TYPE, lokinetText))
+        .to.emit(sns, 'TextRecordUpdated')
+        .withArgs(tokenId, LOKINET_RECORD_TYPE, lokinetText);
+      
+      // Verify both record types are set correctly
+      expect(await sns.resolve(TEST_NAME_1, SESSION_RECORD_TYPE)).to.equal(sessionText);
+      expect(await sns.resolve(TEST_NAME_1, LOKINET_RECORD_TYPE)).to.equal(lokinetText);
     });
 
-     it('Should allow an approved operator (setApprovalForAll) to set the text record', async function () {
+    it('Should allow an approved operator (setApprovalForAll) to set text records', async function () {
+      const sessionText = "operator session text";
+      const lokinetText = "operator lokinet text";
+      
       await sns.connect(user1).setApprovalForAll(user2.address, true);
-      await expect(sns.connect(user2).setTextRecord(tokenId, testText))
+      
+      await expect(sns.connect(user2).setTextRecord(tokenId, SESSION_RECORD_TYPE, sessionText))
         .to.emit(sns, 'TextRecordUpdated')
-        .withArgs(tokenId, testText);
-      expect(await sns.tokenIdToTextRecord(tokenId)).to.equal(testText);
-      // Set it back to empty
-      await expect(sns.connect(user1).setTextRecord(tokenId, ""))
+        .withArgs(tokenId, SESSION_RECORD_TYPE, sessionText);
+      
+      await expect(sns.connect(user2).setTextRecord(tokenId, LOKINET_RECORD_TYPE, lokinetText))
         .to.emit(sns, 'TextRecordUpdated')
-        .withArgs(tokenId, "");
-      expect(await sns.tokenIdToTextRecord(tokenId)).to.equal("");
-      // Resolve requires the exact registered name
-      expect(await sns.resolve(TEST_NAME_1)).to.equal("");
+        .withArgs(tokenId, LOKINET_RECORD_TYPE, lokinetText);
+      
+      // Verify both record types are set correctly
+      expect(await sns.resolve(TEST_NAME_1, SESSION_RECORD_TYPE)).to.equal(sessionText);
+      expect(await sns.resolve(TEST_NAME_1, LOKINET_RECORD_TYPE)).to.equal(lokinetText);
+      
+      // Set back to empty for both types
+      await expect(sns.connect(user1).setTextRecord(tokenId, SESSION_RECORD_TYPE, ""))
+        .to.emit(sns, 'TextRecordUpdated')
+        .withArgs(tokenId, SESSION_RECORD_TYPE, "");
+      
+      await expect(sns.connect(user1).setTextRecord(tokenId, LOKINET_RECORD_TYPE, ""))
+        .to.emit(sns, 'TextRecordUpdated')
+        .withArgs(tokenId, LOKINET_RECORD_TYPE, "");
+      
+      // Verify both are empty again
+      expect(await sns.resolve(TEST_NAME_1, SESSION_RECORD_TYPE)).to.equal("");
+      expect(await sns.resolve(TEST_NAME_1, LOKINET_RECORD_TYPE)).to.equal("");
     });
 
     it('Should prevent non-owner/non-approved from setting the text record', async function () {
       // Using registerer account (not owner or approved)
-      await expect(sns.connect(registerer).setTextRecord(tokenId, testText))
+      await expect(sns.connect(registerer).setTextRecord(tokenId, SESSION_RECORD_TYPE, testText))
         .to.be.revertedWithCustomError(sns, 'NotAuthorized');
+      
+      await expect(sns.connect(registerer).setTextRecord(tokenId, LOKINET_RECORD_TYPE, testText))
+        .to.be.revertedWithCustomError(sns, 'NotAuthorized');
+      
       // Using other account (not owner or approved)
-      await expect(sns.connect(otherAccount).setTextRecord(tokenId, testText))
+      await expect(sns.connect(otherAccount).setTextRecord(tokenId, SESSION_RECORD_TYPE, testText))
+        .to.be.revertedWithCustomError(sns, 'NotAuthorized');
+      
+      await expect(sns.connect(otherAccount).setTextRecord(tokenId, LOKINET_RECORD_TYPE, testText))
         .to.be.revertedWithCustomError(sns, 'NotAuthorized');
     });
 
-     it('Should prevent setting the text record for a non-existent token', async function () {
+    it('Should prevent setting the text record for a non-existent token', async function () {
       const nonExistentTokenId = calculateNameHash("nonexistent");
-      await expect(sns.connect(user1).setTextRecord(nonExistentTokenId, testText))
+      await expect(sns.connect(user1).setTextRecord(nonExistentTokenId, SESSION_RECORD_TYPE, testText))
             .to.be.revertedWithCustomError(sns, 'ERC721NonexistentToken')
             .withArgs(nonExistentTokenId);
+      
+      await expect(sns.connect(user1).setTextRecord(nonExistentTokenId, LOKINET_RECORD_TYPE, testText))
+            .to.be.revertedWithCustomError(sns, 'ERC721NonexistentToken')
+            .withArgs(nonExistentTokenId);
+    });
+
+    it('Should revert with InvalidRecordType for unsupported record types', async function () {
+      // Using record type 2 which is unused/invalid
+      await expect(sns.connect(user1).setTextRecord(tokenId, 2, testText))
+        .to.be.revertedWithCustomError(sns, 'InvalidRecordType');
+      
+      // Using record type 4 which is also invalid
+      await expect(sns.connect(user1).setTextRecord(tokenId, 4, testText))
+        .to.be.revertedWithCustomError(sns, 'InvalidRecordType');
+    });
+
+    it('Should allow setting empty text records for both types', async function () {
+      // Set session record
+      await sns.connect(user1).setTextRecord(tokenId, SESSION_RECORD_TYPE, testText);
+      expect(await sns.resolve(TEST_NAME_1, SESSION_RECORD_TYPE)).to.equal(testText);
+      
+      // Set lokinet record
+      const lokinetText = "lokinet test text";
+      await sns.connect(user1).setTextRecord(tokenId, LOKINET_RECORD_TYPE, lokinetText);
+      expect(await sns.resolve(TEST_NAME_1, LOKINET_RECORD_TYPE)).to.equal(lokinetText);
+      
+      // Set both back to empty
+      await expect(sns.connect(user1).setTextRecord(tokenId, SESSION_RECORD_TYPE, ""))
+        .to.emit(sns, 'TextRecordUpdated')
+        .withArgs(tokenId, SESSION_RECORD_TYPE, "");
+      
+      await expect(sns.connect(user1).setTextRecord(tokenId, LOKINET_RECORD_TYPE, ""))
+        .to.emit(sns, 'TextRecordUpdated')
+        .withArgs(tokenId, LOKINET_RECORD_TYPE, "");
+      
+      // Verify both are empty
+      expect(await sns.resolve(TEST_NAME_1, SESSION_RECORD_TYPE)).to.equal("");
+      expect(await sns.resolve(TEST_NAME_1, LOKINET_RECORD_TYPE)).to.equal("");
+    });
+
+    it('Should allow the owner to set a text record before renewal', async function () {
+        const originalText = "original text";
+        await sns.connect(user1).setTextRecord(tokenId, SESSION_RECORD_TYPE, originalText);
+
+        // Check text record is set
+        expect(await sns.resolve(TEST_NAME_1, SESSION_RECORD_TYPE)).to.equal(originalText);
+
+        // Enable renewals
+        await sns.connect(owner).flipRenewals();
+        expect(await sns.allowRenewals()).to.be.true;
+
+        // Verify renewal keeps the text record
+        await time.increase(ONE_DAY * 10);
+        await sns.connect(user1).renewName(TEST_NAME_1);
+
+        // Text record should still be available
+        expect(await sns.resolve(TEST_NAME_1, SESSION_RECORD_TYPE)).to.equal(originalText);
      });
 
-    it('Should allow setting an empty text record', async function () {
-       // Set it first
-      await sns.connect(user1).setTextRecord(tokenId, testText);
-      expect(await sns.resolve(TEST_NAME_1)).to.equal(testText);
-      // Set it back to empty
-      await expect(sns.connect(user1).setTextRecord(tokenId, ""))
-        .to.emit(sns, 'TextRecordUpdated')
-        .withArgs(tokenId, "");
-      expect(await sns.tokenIdToTextRecord(tokenId)).to.equal("");
-      expect(await sns.resolve(TEST_NAME_1)).to.equal("");
-    });
+     it('Should preserve the text record after renewal', async function () {
+       const originalText = "original text";
+       // Set text record
+       await sns.connect(user1).setTextRecord(tokenId, SESSION_RECORD_TYPE, originalText);
+
+       // Advance time
+       await time.increase(ONE_DAY * 20);
+
+       // Enable renewals
+       await sns.connect(owner).flipRenewals();
+       expect(await sns.allowRenewals()).to.be.true;
+
+       // Renew
+       await sns.connect(user1).renewName(TEST_NAME_1);
+
+       // Text record should be preserved
+       expect(await sns.resolve(TEST_NAME_1, SESSION_RECORD_TYPE)).to.equal(originalText);
+     });
+
+     it('Should allow updating text record after renewal', async function () {
+       const originalText = "original text";
+       const updatedText = "updated after renewal";
+
+       // Set text record
+       await sns.connect(user1).setTextRecord(tokenId, SESSION_RECORD_TYPE, originalText);
+       expect(await sns.resolve(TEST_NAME_1, SESSION_RECORD_TYPE)).to.equal(originalText);
+
+       // Advance time
+       await time.increase(ONE_DAY * 20);
+
+       // Enable renewals
+       await sns.connect(owner).flipRenewals();
+       expect(await sns.allowRenewals()).to.be.true;
+
+       // Renew
+       await sns.connect(user1).renewName(TEST_NAME_1);
+
+       // Update text record
+       await sns.connect(user1).setTextRecord(tokenId, SESSION_RECORD_TYPE, updatedText);
+
+       // Text record should be updated
+       expect(await sns.resolve(TEST_NAME_1, SESSION_RECORD_TYPE)).to.equal(updatedText);
+     });
+
+     it('Should transfer name with text record intact', async function () {
+       const originalText = "original text";
+
+       // Set text record
+       await sns.connect(user1).setTextRecord(tokenId, SESSION_RECORD_TYPE, originalText);
+       expect(await sns.resolve(TEST_NAME_1, SESSION_RECORD_TYPE)).to.equal(originalText);
+
+       // Transfer to user2
+       await sns.connect(user1).transferFrom(user1.address, user2.address, tokenId);
+
+       // Text record should be preserved after transfer
+       expect(await sns.resolve(TEST_NAME_1, SESSION_RECORD_TYPE)).to.equal(originalText);
+
+       // New owner can update the text record
+       const newText = "updated by new owner";
+       await sns.connect(user2).setTextRecord(tokenId, SESSION_RECORD_TYPE, newText);
+       expect(await sns.resolve(TEST_NAME_1, SESSION_RECORD_TYPE)).to.equal(newText);
+     });
   });
 
   // --- Total Supply Management ---

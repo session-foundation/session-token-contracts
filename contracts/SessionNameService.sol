@@ -24,6 +24,11 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
         uint256 renewals; // Timestamp of the last renewal (or registration if never renewed)
     }
 
+    struct TextRecords {
+        string sessionName; // Type 1
+        string lokinetName; // Type 3
+    }
+
     // Stores the original name associated with a token ID.
     // Necessary for cleanup during burn/expire operations.
     struct LinkedNames {
@@ -45,8 +50,8 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
     mapping(string => NameAssets) public namesToAssets;
     // Maps token ID (hash of name) back to its original name string.
     mapping(uint256 => LinkedNames) public idsToNames;
-    // Maps token ID to its associated text record.
-    mapping(uint256 => string) public tokenIdToTextRecord;
+    // Maps token ID to its associated text records.
+    mapping(uint256 => TextRecords) public tokenIdToTextRecord;
 
     // Custom Errors
     error InvalidInputLengths();
@@ -60,6 +65,7 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
     error RenewalsDisabled();
     error InvalidExpirationDuration();
     error ExpirationDurationTooLong();
+    error InvalidRecordType();
 
     /**
      * @notice Deploys the SessionNameService contract.
@@ -72,17 +78,27 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
     }
 
     /**
-     * @notice Resolves a name to its associated text record.
+     * @notice Resolves a name to its associated text record of a specific type.
      * @param _name The name to resolve.
-     * @return string The text record, or empty string if not set.
-     * @dev Reverts if name not registered.
+     * @param recordType The type of record to retrieve (1 for session, 3 for lokinet).
+     * @return string The text record, reverts if not registered and returns an empty string if not set
      */
-    function resolve(string memory _name) external view override returns (string memory) {
+    function resolve(string memory _name, uint8 recordType) external view override returns (string memory) {
         uint256 hashOfName = uint256(keccak256(abi.encodePacked(_name)));
 
-        if (bytes(idsToNames[hashOfName].name).length == 0) revert NameNotRegistered();
+        if (bytes(idsToNames[hashOfName].name).length == 0) {
+             revert NameNotRegistered();
+        }
 
-        return tokenIdToTextRecord[hashOfName];
+        TextRecords storage records = tokenIdToTextRecord[hashOfName];
+
+        if (recordType == 1) {
+            return records.sessionName;
+        } else if (recordType == 3) {
+            return records.lokinetName;
+        } else {
+            return "";
+        }
     }
 
     /**
@@ -201,10 +217,10 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
         uint256 newTokenId = uint256(keccak256(abi.encodePacked(_name)));
         namesToAssets[_name] = NameAssets(newTokenId, block.timestamp);
         idsToNames[newTokenId].name = _name;
-        tokenIdToTextRecord[newTokenId] = "";
+        tokenIdToTextRecord[newTokenId] = TextRecords("", "");
 
-        _safeMint(to, newTokenId); // Calls standard OpenZeppelin _safeMint.
-        totalSupply_++; // Increment supply after successful mint
+        _safeMint(to, newTokenId);
+        totalSupply_++;
         emit NameRegistered(_name, to, newTokenId);
         return newTokenId;
     }
@@ -282,18 +298,27 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
     }
 
     /**
-     * @notice Sets a text record associated with a specific token ID.
+     * @notice Sets a specific type of text record associated with a token ID.
      * @param tokenId The token ID to set the record for.
+     * @param recordType The type of record (1 for session, 3 for lokinet).
      * @param text The text data to associate with the token ID.
      * @dev Only the owner or approved operators can set the text record.
      */
-    function setTextRecord(uint256 tokenId, string calldata text) external {
+    function setTextRecord(uint256 tokenId, uint8 recordType, string calldata text) external {
         address owner = ownerOf(tokenId);
         if (msg.sender != owner && getApproved(tokenId) != msg.sender && !isApprovedForAll(owner, msg.sender)) {
             revert NotAuthorized();
         }
-        tokenIdToTextRecord[tokenId] = text;
-        emit TextRecordUpdated(tokenId, text);
+
+        if (recordType == 1) {
+            tokenIdToTextRecord[tokenId].sessionName = text;
+        } else if (recordType == 3) {
+            tokenIdToTextRecord[tokenId].lokinetName = text;
+        } else {
+            revert InvalidRecordType();
+        }
+
+        emit TextRecordUpdated(tokenId, recordType, text);
     }
 
     // --- Modifiers ---

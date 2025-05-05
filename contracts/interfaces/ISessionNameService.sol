@@ -44,21 +44,23 @@ interface ISessionNameService {
     /**
      * @dev Emitted when the text record for a name NFT is updated.
      * @param tokenId The token ID of the NFT whose record was updated.
-     * @param newText The new text record string.
+     * @param recordType The type of record updated (1 for session, 3 for lokinet).
+     * @param text The new text record string.
      */
-    event TextRecordUpdated(uint256 indexed tokenId, string newText);
+    event TextRecordUpdated(uint256 indexed tokenId, uint8 indexed recordType, string text);
 
     // --- Functions ---
 
     /**
-     * @notice Resolves a name to its associated text record.
+     * @notice Resolves a name to its associated text record of a specific type.
      * @param _name The name to resolve (case-insensitive).
-     * @return string The text record associated with the name.
+     * @param recordType The type of record to retrieve (1 for session, 3 for lokinet).
+     * @return string The text record associated with the name and type.
      * @dev Implementations should convert the name to lowercase before lookup.
      * @dev Reverts if the name is not registered.
-     * @dev Returns an empty string if the name is registered but no text record is set.
+     * @dev Returns an empty string if the name is registered but the specific record type is not set.
      */
-    function resolve(string memory _name) external view returns (string memory);
+    function resolve(string memory _name, uint8 recordType) external view returns (string memory);
 
     /**
      * @notice Registers a new name, minting an ERC-721 NFT to the specified owner.
