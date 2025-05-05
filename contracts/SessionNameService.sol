@@ -138,10 +138,14 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
         address owner = _requireOwned(asset.id);
         if (owner != msg.sender) revert ERC721IncorrectOwner(msg.sender, asset.id, owner);
 
-        uint256 currentTime = block.timestamp;
-        asset.renewals = currentTime;
+        uint256 expirationTime = asset.renewals + expiration;
+        if (expirationTime <= block.timestamp) {
+            asset.renewals = block.timestamp;
+        } else {
+            asset.renewals = expirationTime;
+        }
 
-        emit NameRenewed(_name, owner, currentTime);
+        emit NameRenewed(_name, owner, asset.renewals);
     }
 
     /**

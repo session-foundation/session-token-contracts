@@ -565,7 +565,7 @@ describe('SessionNameService', function () {
         const initialTimestamp = initialAsset.renewals;
 
         await time.increase(ONE_DAY * 10);
-        const expectedTimestamp = BigInt(await time.latest()) + 1n;
+        const expectedTimestamp = initialTimestamp + BigInt(expirationPeriod);
 
         await expect(sns.connect(user1).renewName(name))
           .to.emit(sns, 'NameRenewed')
@@ -989,7 +989,8 @@ describe('SessionNameService', function () {
 
          await time.increase(ONE_DAY * 10);
          const initialAsset = await sns.namesToAssets(name);
-         const expectedTimestamp = BigInt(await time.latest()) + 1n;
+         const testExpirationPeriod = INITIAL_EXPIRATION_DAYS * ONE_DAY;
+         const expectedTimestamp = initialAsset.renewals + BigInt(testExpirationPeriod);
 
          await expect(sns.connect(user2).renewName(name))
            .to.emit(sns, 'NameRenewed')
