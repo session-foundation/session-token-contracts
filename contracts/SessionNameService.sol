@@ -5,6 +5,8 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {ERC721Burnable} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721Burnable.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ISessionNameService} from "./interfaces/ISessionNameService.sol";
 
 /**
@@ -17,6 +19,7 @@ import {ISessionNameService} from "./interfaces/ISessionNameService.sol";
  */
 contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, AccessControl {
     using Strings for uint256;
+    using SafeERC20 for IERC20;
 
     // Stores NFT metadata associated with a registered name.
     struct NameAssets {
@@ -53,8 +56,12 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
     // Maps token ID to its associated text records.
     mapping(uint256 => TextRecords) public tokenIdToTextRecord;
 
+    // Fee-related state variables
+    IERC20 public paymentToken;
+    uint256 public registrationFee;
+    uint256 public transferFee;
+
     // Custom Errors
-    error InvalidInputLengths();
     error NameNotRegistered();
     error NotNameOwner();
     error RenewalPeriodNotOver();
@@ -66,6 +73,10 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
     error InvalidExpirationDuration();
     error ExpirationDurationTooLong();
     error InvalidRecordType();
+    error InvalidFee();
+    error InvalidTokenAddress();
+    error InsufficientPayment();
+    error TransferFailed();
 
     /**
      * @notice Deploys the SessionNameService contract.
@@ -109,23 +120,6 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
     }
 
     /**
-     * @notice Registers multiple names in a single transaction.
-     * @param to Array of addresses to receive the name NFTs.
-     * @param _name Array of names to register.
-     * @dev Requires REGISTERER_ROLE or DEFAULT_ADMIN_ROLE.
-     * @dev Both arrays must have the same length.
-     * @dev Calls internal `registerName` for each entry.
-     * @dev Transaction is atomic; if one registration fails, the entire batch reverts.
-     */
-    function registerNameMultiple(address[] memory to, string[] memory _name) external onlyRegisterer {
-        if (to.length != _name.length) revert InvalidInputLengths();
-
-        for (uint256 i = 0; i < to.length; i++) {
-            registerName(to[i], _name[i]);
-        }
-    }
-
-    /**
      * @notice Renews a name registration, updating its renewal timestamp.
      * @param _name Name to renew.
      * @dev Requires allowRenewals to be true.
@@ -137,6 +131,11 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
         if (asset.id == 0) revert NameNotRegistered();
         address owner = _requireOwned(asset.id);
         if (owner != msg.sender) revert ERC721IncorrectOwner(msg.sender, asset.id, owner);
+
+        if (registrationFee > 0) {
+            if (address(paymentToken) == address(0)) revert InvalidTokenAddress();
+            paymentToken.safeTransferFrom(msg.sender, address(this), registrationFee);
+        }
 
         uint256 expirationTime = asset.renewals + expiration;
         if (expirationTime <= block.timestamp) {
@@ -214,6 +213,11 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
      * @dev Validates name (non-empty, Base64, unique).
      */
     function registerName(address to, string memory _name) public onlyRegisterer returns (uint256) {
+        if (registrationFee > 0) {
+            if (address(paymentToken) == address(0)) revert InvalidTokenAddress();
+            paymentToken.safeTransferFrom(to, address(this), registrationFee);
+        }
+
         if (bytes(_name).length == 0) revert NullName();
         if (!isValidBase64(_name)) revert UnsupportedCharacters();
         if (namesToAssets[_name].id != 0) revert NameAlreadyRegistered();
@@ -323,6 +327,64 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
         }
 
         emit TextRecordUpdated(tokenId, recordType, text);
+    }
+
+    /**
+     * @notice Modified transfer function to include fee payment
+     * @param from Address to transfer from
+     * @param to Address to transfer to
+     * @param tokenId Token ID to transfer
+     */
+    function transferFrom(address from, address to, uint256 tokenId) public override {
+        if (!_isAuthorized(from, msg.sender, tokenId)) {
+            revert ERC721InsufficientApproval(msg.sender, tokenId);
+        }
+        if (from != _requireOwned(tokenId)) {
+            revert ERC721IncorrectOwner(from, tokenId, _requireOwned(tokenId));
+        }
+        if (transferFee > 0) {
+            if (address(paymentToken) == address(0)) revert InvalidTokenAddress();
+            paymentToken.safeTransferFrom(msg.sender, address(this), transferFee);
+        }
+        super.transferFrom(from, to, tokenId);
+    }
+
+    /**
+     * @notice Sets the payment token for registration and transfer fees
+     * @param _paymentToken Address of the ERC20 token to use for payments
+     * @dev Requires DEFAULT_ADMIN_ROLE
+     */
+    function setPaymentToken(address _paymentToken) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (_paymentToken == address(0)) revert InvalidTokenAddress();
+        paymentToken = IERC20(_paymentToken);
+        emit PaymentTokenSet(_paymentToken);
+    }
+
+    /**
+     * @notice Sets the registration and transfer fees
+     * @param _registrationFee Amount of tokens required for registration
+     * @param _transferFee Amount of tokens required for transfers
+     * @dev Requires DEFAULT_ADMIN_ROLE
+     */
+    function setFees(uint256 _registrationFee, uint256 _transferFee) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (_registrationFee == 0 && _transferFee == 0) revert InvalidFee();
+        registrationFee = _registrationFee;
+        transferFee = _transferFee;
+        emit FeesSet(_registrationFee, _transferFee);
+    }
+
+    /**
+     * @notice Withdraws collected fees to the specified address
+     * @param to Address to receive the collected fees
+     * @dev Requires DEFAULT_ADMIN_ROLE
+     */
+    function withdrawFees(address to) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (to == address(0)) revert InvalidTokenAddress();
+        uint256 balance = paymentToken.balanceOf(address(this));
+        if (balance == 0) revert InsufficientPayment();
+        
+        paymentToken.safeTransfer(to, balance);
+        emit FeesWithdrawn(to, balance);
     }
 
     // --- Modifiers ---

@@ -35,9 +35,18 @@ describe('SessionNameService', function () {
   const SESSION_RECORD_TYPE = 1;
   const LOKINET_RECORD_TYPE = 3;
 
+  // Fee-related constants
+  const REGISTRATION_FEE = ethers.parseUnits("1.0", 9);
+  const TRANSFER_FEE = ethers.parseUnits("0.5", 9);
+
   async function deploySessionNameServiceFixture() {
     const [owner, registerer, user1, user2, otherAccount] =
       await ethers.getSigners();
+
+    // Deploy mock ERC20 token for testing
+    const MockToken = await ethers.getContractFactory("MockERC20");
+    const mockToken = await MockToken.deploy("Mock Token", "MTK", ethers.parseUnits("1000000", 9));
+    await mockToken.waitForDeployment();
 
     const SessionNameServiceFactory = await ethers.getContractFactory(
       'SessionNameService'
@@ -49,8 +58,25 @@ describe('SessionNameService', function () {
     const REGISTERER_ROLE = await sns.REGISTERER_ROLE();
     await sns.connect(owner).grantRole(REGISTERER_ROLE, registerer.address);
 
+    // Set up payment token and fees
+    await sns.connect(owner).setPaymentToken(await mockToken.getAddress());
+    await sns.connect(owner).setFees(REGISTRATION_FEE, TRANSFER_FEE);
+
+    // Mint tokens to users for testing
+    await mockToken.transfer(owner.address, ethers.parseUnits("1000", 9));
+    await mockToken.transfer(registerer.address, ethers.parseUnits("1000", 9));
+    await mockToken.transfer(user1.address, ethers.parseUnits("1000", 9));
+    await mockToken.transfer(user2.address, ethers.parseUnits("1000", 9));
+
+    // Approve tokens for the contract
+    await mockToken.connect(owner).approve(await sns.getAddress(), ethers.parseUnits("1000", 9));
+    await mockToken.connect(registerer).approve(await sns.getAddress(), ethers.parseUnits("1000", 9));
+    await mockToken.connect(user1).approve(await sns.getAddress(), ethers.parseUnits("1000", 9));
+    await mockToken.connect(user2).approve(await sns.getAddress(), ethers.parseUnits("1000", 9));
+
     return {
       sns,
+      mockToken,
       owner,
       registerer,
       user1,
@@ -134,54 +160,6 @@ describe('SessionNameService', function () {
         
       await expect(
         sns.connect(otherAccount).registerName(otherAccount.address, 'failname')
-      ).to.be.revertedWithCustomError(sns, 'NotAuthorized');
-    });
-
-     it('Only REGISTERER_ROLE or ADMIN_ROLE can call registerNameMultiple', async function () {
-      const { sns, registerer, owner, user1, user2, otherAccount } = await loadFixture(
-        deploySessionNameServiceFixture
-      );
-      const names = ['multi1', 'multi2'];
-      const addresses = [user1.address, user2.address];
-
-      const tx = sns.connect(registerer).registerNameMultiple(addresses, names);
-
-      for (let i = 0; i < names.length; i++) {
-          const name = names[i];
-          const addr = addresses[i];
-          const tokenId = calculateNameHash(name);
-          await expect(tx)
-              .to.emit(sns, 'NameRegistered')
-              .withArgs(name, addr, tokenId);
-      }
-
-      expect(await sns.ownerOf(calculateNameHash(names[0]))).to.equal(addresses[0]);
-      expect(await sns.ownerOf(calculateNameHash(names[1]))).to.equal(addresses[1]);
-      expect(await sns.resolve(names[0], SESSION_RECORD_TYPE)).to.equal("");
-      expect(await sns.resolve(names[1], SESSION_RECORD_TYPE)).to.equal("");
-      expect(await sns.balanceOf(user1.address)).to.equal(1);
-      expect(await sns.balanceOf(user2.address)).to.equal(1);
-      expect(await sns.totalSupply()).to.equal(2);
-
-      // Burn first to avoid "already have name" error for owner
-      const hashMulti1 = calculateNameHash('multi1');
-      const hashMulti2 = calculateNameHash('multi2');
-      await sns.connect(user1).burn(hashMulti1);
-      await sns.connect(user2).burn(hashMulti2);
-
-      const namesAdmin = ['adminmulti1', 'adminmulti2'];
-      const addressesAdmin = [otherAccount.address, owner.address];
-      await expect(sns.connect(owner).registerNameMultiple(addressesAdmin, namesAdmin))
-        .to.not.be.reverted;
-
-      const namesFail = ['failmulti1'];
-      const addressesFail = [otherAccount.address];
-      // Need to burn adminmulti1 first
-      const hashAdminMulti1 = calculateNameHash('adminmulti1');
-      await sns.connect(otherAccount).burn(hashAdminMulti1);
-
-      await expect(
-        sns.connect(otherAccount).registerNameMultiple(addressesFail, namesFail)
       ).to.be.revertedWithCustomError(sns, 'NotAuthorized');
     });
 
@@ -388,77 +366,19 @@ describe('SessionNameService', function () {
         const returnedTokenId = await sns.connect(registerer).registerName.staticCall(user1.address, name);
         expect(returnedTokenId).to.equal(expectedTokenId);
     });
-  });
 
-   // --- Multiple Name Registration ---
-  describe('Multiple Name Registration (`registerNameMultiple`)', function () {
-        it('Should allow REGISTERER to register multiple valid names', async function () {
-            const { sns, registerer, user1, user2 } = await loadFixture(deploySessionNameServiceFixture);
-            const names = ['nameone', 'nametwo'];
-            const addresses = [user1.address, user2.address];
-            const tokenId1 = calculateNameHash(names[0]);
-            const tokenId2 = calculateNameHash(names[1]);
-
-            const tx = sns.connect(registerer).registerNameMultiple(addresses, names);
-
-            for (let i = 0; i < names.length; i++) {
-                const name = names[i];
-                const owner = addresses[i];
-                const tokenId = calculateNameHash(name);
-                await expect(tx)
-                    .to.emit(sns, 'NameRegistered')
-                    .withArgs(name, owner, tokenId);
-            }
-
-            expect(await sns.ownerOf(tokenId1)).to.equal(addresses[0]);
-            expect(await sns.ownerOf(tokenId2)).to.equal(addresses[1]);
-            expect(await sns.resolve(names[0], SESSION_RECORD_TYPE)).to.equal("");
-            expect(await sns.resolve(names[1], SESSION_RECORD_TYPE)).to.equal("");
-            expect(await sns.balanceOf(user1.address)).to.equal(1);
-            expect(await sns.balanceOf(user2.address)).to.equal(1);
-            expect(await sns.totalSupply()).to.equal(2);
-        });
-
-        it('Should revert if input array lengths mismatch', async function () {
-            const { sns, registerer, user1 } = await loadFixture(deploySessionNameServiceFixture);
-            const names = ['nameone'];
-            const addresses = [user1.address, user1.address]; // Length mismatch
-
-            await expect(
-                sns.connect(registerer).registerNameMultiple(addresses, names)
-            ).to.be.revertedWithCustomError(sns, 'InvalidInputLengths');
-        });
-
-        it('Should revert entire batch if one registration fails (e.g., duplicate name - case sensitive)', async function () {
-            const { sns, owner, registerer, user1, user2, otherAccount } = await loadFixture(deploySessionNameServiceFixture);
-            const existingName = 'existing';
-            await sns.connect(registerer).registerName(user1.address, existingName);
-
-            const names = ['newname', existingName, 'anothernew']; // Contains exact duplicate
-            const addresses = [user2.address, otherAccount.address, owner.address];
-
-            await expect(
-                sns.connect(registerer).registerNameMultiple(addresses, names)
-            ).to.be.revertedWithCustomError(sns, 'NameAlreadyRegistered');
-
-            // Verify none of the new names were registered
-            await expect(sns.resolve('newname', SESSION_RECORD_TYPE))
-                .to.be.revertedWithCustomError(sns, 'NameNotRegistered');
-            await expect(sns.resolve('anothernew', SESSION_RECORD_TYPE))
-                .to.be.revertedWithCustomError(sns, 'NameNotRegistered');
-            expect(await sns.balanceOf(user2.address)).to.equal(0);
-            expect(await sns.balanceOf(otherAccount.address)).to.equal(0);
-            expect(await sns.totalSupply()).to.equal(1); // Only 'existing' should remain
-
-            // Test batch with different case - should succeed if 'existing' already registered
-            const namesCaseDiff = ['NewName', 'EXISTING', 'AnotherNew'];
-             await expect(
-                sns.connect(registerer).registerNameMultiple(addresses, namesCaseDiff)
-            ).to.not.be.reverted;
-             expect(await sns.totalSupply()).to.equal(1 + namesCaseDiff.length); // Should register all 3
-        });
-
+    it('Cannot register without sufficient token balance', async function () {
+      const { sns, registerer, user1, mockToken } = await loadFixture(deploySessionNameServiceFixture);
+      
+      // Set allowance to 0 to simulate insufficient balance
+      await mockToken.connect(user1).approve(await sns.getAddress(), 0);
+      
+      await expect(
+        sns.connect(registerer).registerName(user1.address, TEST_NAME_1)
+      ).to.be.revertedWithCustomError(mockToken, 'ERC20InsufficientAllowance')
+      .withArgs(await sns.getAddress(), 0, REGISTRATION_FEE);
     });
+  });
 
   // --- Name Resolution ---
   describe('Name Resolution (`resolve`)', function () {
@@ -578,7 +498,8 @@ describe('SessionNameService', function () {
 
       it('Should revert if called by someone other than the owner', async function () {
         await expect(sns.connect(otherAccount).renewName(name))
-          .to.be.revertedWithCustomError(sns, 'ERC721IncorrectOwner');
+          .to.be.revertedWithCustomError(sns, 'ERC721IncorrectOwner')
+          .withArgs(otherAccount.address, tokenId, user1.address);
       });
 
       it('Should revert if renewals are disabled', async function () {
@@ -1307,16 +1228,6 @@ describe('SessionNameService', function () {
         expect(await sns.totalSupply()).to.equal(2);
     });
 
-    it('Should increment totalSupply correctly with registerNameMultiple', async function () {
-      const { sns, registerer, user1, user2, otherAccount } = await loadFixture(deploySessionNameServiceFixture);
-      expect(await sns.totalSupply()).to.equal(0);
-      const names = ['multi1', 'multi2', 'multi3'];
-      const addresses = [user1.address, user2.address, otherAccount.address];
-
-      await sns.connect(registerer).registerNameMultiple(addresses, names);
-      expect(await sns.totalSupply()).to.equal(names.length);
-    });
-
     it('Should decrement totalSupply on burn', async function () {
         const { sns, registerer, user1, user2 } = await loadFixture(deploySessionNameServiceFixture);
         const name1 = 'burnsupply1';
@@ -1362,6 +1273,130 @@ describe('SessionNameService', function () {
         await ethers.provider.send('evm_mine', []);
         await sns.connect(registerer).expireName(name2);
         expect(await sns.totalSupply()).to.equal(0, "Total supply did not decrease after second expiration");
+    });
+  });
+
+  // --- Fee Management ---
+  describe('Fee Management', function () {
+    it('Only ADMIN_ROLE can set payment token', async function () {
+      const { sns, owner, otherAccount, mockToken } = await loadFixture(deploySessionNameServiceFixture);
+      
+      await expect(sns.connect(owner).setPaymentToken(await mockToken.getAddress()))
+        .to.emit(sns, 'PaymentTokenSet')
+        .withArgs(await mockToken.getAddress());
+
+      await expect(
+        sns.connect(otherAccount).setPaymentToken(await mockToken.getAddress())
+      ).to.be.revertedWithCustomError(sns, 'AccessControlUnauthorizedAccount');
+    });
+
+    it('Only ADMIN_ROLE can set fees', async function () {
+      const { sns, owner, otherAccount } = await loadFixture(deploySessionNameServiceFixture);
+      
+      await expect(sns.connect(owner).setFees(REGISTRATION_FEE, TRANSFER_FEE))
+        .to.emit(sns, 'FeesSet')
+        .withArgs(REGISTRATION_FEE, TRANSFER_FEE);
+
+      await expect(
+        sns.connect(otherAccount).setFees(REGISTRATION_FEE, TRANSFER_FEE)
+      ).to.be.revertedWithCustomError(sns, 'AccessControlUnauthorizedAccount');
+    });
+
+    it('Only ADMIN_ROLE can withdraw fees', async function () {
+      const { sns, owner, otherAccount, user1, mockToken } = await loadFixture(deploySessionNameServiceFixture);
+      
+      // Register a name to generate some fees
+      await sns.connect(owner).registerName(user1.address, TEST_NAME_1);
+      
+      const initialBalance = await mockToken.balanceOf(owner.address);
+      
+      await expect(sns.connect(owner).withdrawFees(owner.address))
+        .to.emit(sns, 'FeesWithdrawn')
+        .withArgs(owner.address, REGISTRATION_FEE);
+
+      const finalBalance = await mockToken.balanceOf(owner.address);
+      expect(finalBalance - initialBalance).to.equal(REGISTRATION_FEE);
+
+      await expect(
+        sns.connect(otherAccount).withdrawFees(otherAccount.address)
+      ).to.be.revertedWithCustomError(sns, 'AccessControlUnauthorizedAccount');
+    });
+
+    it('Registration requires payment of fee', async function () {
+      const { sns, registerer, user1, mockToken } = await loadFixture(deploySessionNameServiceFixture);
+      
+      const initialBalance = await mockToken.balanceOf(user1.address);
+      
+      await expect(sns.connect(registerer).registerName(user1.address, TEST_NAME_1))
+        .to.emit(sns, 'NameRegistered')
+        .withArgs(TEST_NAME_1, user1.address, calculateNameHash(TEST_NAME_1));
+
+      const finalBalance = await mockToken.balanceOf(user1.address);
+      expect(initialBalance - finalBalance).to.equal(REGISTRATION_FEE);
+    });
+
+    it('Transfer requires payment of fee', async function () {
+      const { sns, registerer, user1, user2, mockToken } = await loadFixture(deploySessionNameServiceFixture);
+      
+      // Register a name first
+      await sns.connect(registerer).registerName(user1.address, TEST_NAME_1);
+      
+      const initialBalance = await mockToken.balanceOf(user1.address);
+      
+      // Transfer the name
+      await expect(sns.connect(user1).transferFrom(user1.address, user2.address, calculateNameHash(TEST_NAME_1)))
+        .to.emit(sns, 'Transfer')
+        .withArgs(user1.address, user2.address, calculateNameHash(TEST_NAME_1));
+
+      const finalBalance = await mockToken.balanceOf(user1.address);
+      expect(initialBalance - finalBalance).to.equal(TRANSFER_FEE);
+    });
+
+    it('Renewal requires payment of fee', async function () {
+      const { sns, owner, registerer, user1, mockToken } = await loadFixture(deploySessionNameServiceFixture);
+      
+      // Enable renewals
+      await sns.connect(owner).flipRenewals();
+      
+      // Register a name first
+      await sns.connect(registerer).registerName(user1.address, TEST_NAME_1);
+      
+      const initialBalance = await mockToken.balanceOf(user1.address);
+      
+      // Renew the name
+      await expect(sns.connect(user1).renewName(TEST_NAME_1))
+        .to.emit(sns, 'NameRenewed')
+        .withArgs(TEST_NAME_1, user1.address, anyValue);
+
+      const finalBalance = await mockToken.balanceOf(user1.address);
+      expect(initialBalance - finalBalance).to.equal(REGISTRATION_FEE);
+    });
+
+    it('Cannot register without sufficient token balance', async function () {
+      const { sns, registerer, user1, mockToken } = await loadFixture(deploySessionNameServiceFixture);
+      
+      // Set allowance to 0 to simulate insufficient balance
+      await mockToken.connect(user1).approve(await sns.getAddress(), 0);
+      
+      await expect(
+        sns.connect(registerer).registerName(user1.address, TEST_NAME_1)
+      ).to.be.revertedWithCustomError(mockToken, 'ERC20InsufficientAllowance')
+      .withArgs(await sns.getAddress(), 0, REGISTRATION_FEE);
+    });
+
+    it('Cannot transfer without sufficient token balance', async function () {
+      const { sns, registerer, user1, user2, mockToken } = await loadFixture(deploySessionNameServiceFixture);
+      
+      // Register a name first
+      await sns.connect(registerer).registerName(user1.address, TEST_NAME_1);
+      
+      // Set allowance to 0 to simulate insufficient balance
+      await mockToken.connect(user1).approve(await sns.getAddress(), 0);
+      
+      await expect(
+        sns.connect(user1).transferFrom(user1.address, user2.address, calculateNameHash(TEST_NAME_1))
+      ).to.be.revertedWithCustomError(mockToken, 'ERC20InsufficientAllowance')
+      .withArgs(await sns.getAddress(), 0, TRANSFER_FEE);
     });
   });
 });

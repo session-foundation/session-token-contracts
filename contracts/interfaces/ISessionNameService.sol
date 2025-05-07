@@ -49,6 +49,26 @@ interface ISessionNameService {
      */
     event TextRecordUpdated(uint256 indexed tokenId, uint8 indexed recordType, string text);
 
+    /**
+     * @dev Emitted when the payment token is set.
+     * @param token The address of the new payment token.
+     */
+    event PaymentTokenSet(address indexed token);
+
+    /**
+     * @dev Emitted when registration and transfer fees are set.
+     * @param registrationFee The new registration fee amount.
+     * @param transferFee The new transfer fee amount.
+     */
+    event FeesSet(uint256 registrationFee, uint256 transferFee);
+
+    /**
+     * @dev Emitted when collected fees are withdrawn.
+     * @param to The address that received the fees.
+     * @param amount The amount of fees withdrawn.
+     */
+    event FeesWithdrawn(address indexed to, uint256 amount);
+
     // --- Functions ---
 
     /**
