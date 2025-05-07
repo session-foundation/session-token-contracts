@@ -48,14 +48,12 @@ describe('SessionNameService', function () {
     const mockToken = await MockToken.deploy("Mock Token", "MTK", ethers.parseUnits("1000000", 9));
     await mockToken.waitForDeployment();
 
-    const SessionNameServiceFactory = await ethers.getContractFactory(
-      'SessionNameService'
-    );
-    const sns = await SessionNameServiceFactory.deploy(BASE_URI);
+    const SessionNameService = await ethers.getContractFactory("SessionNameService", owner);
+    sns = await upgrades.deployProxy(SessionNameService, [BASE_URI] );
     await sns.waitForDeployment();
 
     // Grant REGISTERER_ROLE to the 'registerer' account
-    const REGISTERER_ROLE = await sns.REGISTERER_ROLE();
+    const REGISTERER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("REGISTERER_ROLE"));
     await sns.connect(owner).grantRole(REGISTERER_ROLE, registerer.address);
 
     // Set up payment token and fees
@@ -801,6 +799,34 @@ describe('SessionNameService', function () {
    });
   });
 
+  // --- Upgradeability ---
+  describe('Upgradeability', function () {
+    it('Should be upgradeable', async function () {
+      const { sns, owner, registerer, user1 } = await loadFixture(deploySessionNameServiceFixture);
+      
+      // Register a name
+      await sns.connect(registerer).registerName(user1.address, TEST_NAME_1);
+      const tokenId = calculateNameHash(TEST_NAME_1);
+      expect(await sns.ownerOf(tokenId)).to.equal(user1.address);
+      
+      // Verify the contract has upgradeToAndCall method (UUPS pattern)
+      expect(typeof sns.upgradeToAndCall).to.equal('function');
+    });
+    
+    it('Should not allow non-admin to upgrade the contract', async function () {
+      const { sns, user1 } = await loadFixture(deploySessionNameServiceFixture);
+      
+      // Deploy a new implementation
+      const SessionNameServiceV2Factory = await ethers.getContractFactory('SessionNameService');
+      const newImplementation = await SessionNameServiceV2Factory.deploy();
+      await newImplementation.waitForDeployment();
+      
+      // Try to upgrade as non-admin
+      await expect(sns.connect(user1).upgradeToAndCall(await newImplementation.getAddress(), "0x"))
+        .to.be.revertedWithCustomError(sns, 'AccessControlUnauthorizedAccount');
+    });
+  });
+
   describe('ERC721 Transfers and Approvals', function () {
       let sns, owner, registerer, user1, user2, otherAccount, tokenId, name;
 
@@ -1127,7 +1153,7 @@ describe('SessionNameService', function () {
         .to.emit(sns, 'TextRecordUpdated')
         .withArgs(tokenId, LOKINET_RECORD_TYPE, "");
       
-      // Verify both are empty
+      // Verify both are empty again
       expect(await sns.resolve(TEST_NAME_1, SESSION_RECORD_TYPE)).to.equal("");
       expect(await sns.resolve(TEST_NAME_1, LOKINET_RECORD_TYPE)).to.equal("");
     });

@@ -5,6 +5,7 @@ const hre = require("hardhat");
 const chalk = require("chalk");
 
 const ethers = hre.ethers;
+const { upgrades } = require("hardhat");
 
 async function main() {
   // Base URI for token metadata - this should be updated to your actual metadata URI
@@ -48,7 +49,11 @@ async function deploySessionNameService(args = {}, verify = true) {
   let sessionNameService;
 
   try {
-    sessionNameService = await SessionNameService.deploy(BASE_URI);
+    console.log("Deploying SessionNameService as an upgradeable contract with transparent proxy...");
+    sessionNameService = await upgrades.deployProxy(SessionNameService, [BASE_URI] );
+    await sessionNameService.waitForDeployment();
+    
+    console.log("Proxy deployed to:", chalk.greenBright(await sessionNameService.getAddress()));
   } catch (error) {
     console.error("Failed to deploy SessionNameService contract:", error);
     process.exit(1);
@@ -67,17 +72,22 @@ async function deploySessionNameService(args = {}, verify = true) {
     "Base URI set to:",
     chalk.green(BASE_URI),
   );
-  await sessionNameService.waitForDeployment();
 
   if (verify) {
-    console.log(chalk.yellow("\n--- Verifying SessionNameService ---\n"));
+    console.log(chalk.yellow("\n--- Verifying SessionNameService Implementation ---\n"));
     console.log("Waiting 6 confirmations to ensure etherscan has processed tx");
     await sessionNameService.deploymentTransaction().wait(6);
     console.log("Finished Waiting");
+    
+    // Get implementation address for verification
+    const implementationAddress = await upgrades.erc1967.getImplementationAddress(
+      await sessionNameService.getAddress()
+    );
+
     try {
       await hre.run("verify:verify", {
-        address: await sessionNameService.getAddress(),
-        constructorArguments: [BASE_URI],
+        address: implementationAddress,
+        constructorArguments: [],
         contract: "contracts/SessionNameService.sol:SessionNameService",
         force: true,
       });

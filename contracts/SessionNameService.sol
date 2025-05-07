@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import {ERC721Burnable} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721Burnable.sol";
-import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
+import {ERC721BurnableUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721BurnableUpgradeable.sol";
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -16,8 +17,14 @@ import {ISessionNameService} from "./interfaces/ISessionNameService.sol";
  * @dev Names must contain only valid Base64 characters (A-Z, a-z, 0-9, +, /).
  * @dev Registration requires REGISTERER_ROLE or DEFAULT_ADMIN_ROLE.
  * @dev Optional renewal/expiration mechanism managed by admin.
+ * @dev This contract is upgradeable using UUPS pattern.
  */
-contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, AccessControl {
+contract SessionNameService is 
+    ISessionNameService, 
+    ERC721Upgradeable, 
+    ERC721BurnableUpgradeable, 
+    AccessControlUpgradeable,
+    UUPSUpgradeable {
     using Strings for uint256;
     using SafeERC20 for IERC20;
 
@@ -41,9 +48,9 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
     // Total number of currently registered names (active NFTs).
     uint256 private totalSupply_;
     // Role required to register names or expire them.
-    bytes32 public constant REGISTERER_ROLE = keccak256("REGISTERER_ROLE");
+    bytes32 public REGISTERER_ROLE;
     // Default duration for which a name registration/renewal is valid.
-    uint256 public expiration = 365 days;
+    uint256 public expiration;
     // Base URI for constructing token URIs (metadata).
     string public baseTokenURI;
     // Flag controlled by admin to enable/disable the renewal and expiration features.
@@ -78,15 +85,35 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
     error InsufficientPayment();
     error TransferFailed();
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
     /**
-     * @notice Deploys the SessionNameService contract.
+     * @notice Initializes the SessionNameService contract.
      * @param baseURI Base URI for token metadata.
      * @dev Grants DEFAULT_ADMIN_ROLE to the deployer.
      */
-    constructor(string memory baseURI) ERC721("SessionNameService", "SNS") {
+    function initialize(string memory baseURI) external initializer {
+        __ERC721_init("SessionNameService", "SNS");
+        __ERC721Burnable_init();
+        __AccessControl_init();
+        __UUPSUpgradeable_init();
+
         baseTokenURI = baseURI;
+        expiration = 365 days;
+        totalSupply_ = 0;
+        REGISTERER_ROLE = keccak256("REGISTERER_ROLE");
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
+
+    /**
+     * @notice Authorizes an upgrade to a new implementation.
+     * @dev Only callable by the admin.
+     * @param newImplementation Address of the new implementation contract.
+     */
+    function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
 
     /**
      * @notice Resolves a name to its associated text record of a specific type.
@@ -234,7 +261,7 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
     }
 
     /**
-     * @inheritdoc ERC721
+     * @inheritdoc ERC721Upgradeable
      * @dev Constructs the token URI by concatenating the `baseTokenURI` and `tokenId`.
      * @dev Returns an empty string if `baseTokenURI` is not set.
      * @dev Reverts with `ERC721NonexistentToken` if `tokenId` does not exist.
@@ -247,21 +274,21 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
     }
 
     /**
-     * @inheritdoc ERC721
+     * @inheritdoc ERC721Upgradeable
      * @dev Declares support for ISessionNameService, ERC721, and AccessControl interfaces.
      */
-    function supportsInterface(bytes4 interfaceId) public view override(ERC721, AccessControl) returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view override(ERC721Upgradeable, AccessControlUpgradeable) returns (bool) {
         return type(ISessionNameService).interfaceId == interfaceId || super.supportsInterface(interfaceId);
     }
 
     /**
-     * @inheritdoc ERC721Burnable
+     * @inheritdoc ERC721BurnableUpgradeable
      * @dev Extends the standard burn functionality to also clean up SNS-specific storage.
      * @dev Deletes entries from `namesToAssets` and `idsToNames`.
      * @dev Emits `NameDeleted` event.
      * @dev Decrements `totalSupply_` after successful burn.
      */
-    function burn(uint256 tokenId) public override(ERC721Burnable) {
+    function burn(uint256 tokenId) public override(ERC721BurnableUpgradeable) {
         address owner = _requireOwned(tokenId);
         string memory _name = idsToNames[tokenId].name;
 
@@ -335,7 +362,7 @@ contract SessionNameService is ISessionNameService, ERC721, ERC721Burnable, Acce
      * @param to Address to transfer to
      * @param tokenId Token ID to transfer
      */
-    function transferFrom(address from, address to, uint256 tokenId) public override {
+    function transferFrom(address from, address to, uint256 tokenId) public override(ERC721Upgradeable) {
         if (!_isAuthorized(from, msg.sender, tokenId)) {
             revert ERC721InsufficientApproval(msg.sender, tokenId);
         }
