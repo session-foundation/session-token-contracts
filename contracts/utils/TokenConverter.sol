@@ -4,8 +4,9 @@ pragma solidity ^0.8.26;
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 
-contract TokenConverter is Ownable, ReentrancyGuard {
+contract TokenConverter is Ownable, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
 
     IERC20 public immutable tokenA;
@@ -23,7 +24,7 @@ contract TokenConverter is Ownable, ReentrancyGuard {
         address _tokenB,
         uint256 _initialNumerator,
         uint256 _initialDenominator
-    ) Ownable(msg.sender) {
+    ) Ownable(msg.sender) Pausable() {
         require(_tokenA != address(0) && _tokenB != address(0), "Invalid token address");
         require(_initialNumerator > 0 && _initialDenominator > 0, "Conversion rate must be greater than 0");
 
@@ -53,12 +54,20 @@ contract TokenConverter is Ownable, ReentrancyGuard {
         tokenB.safeTransfer(msg.sender, _amount);
     }
 
-    function convertTokens(uint256 _amountA) external nonReentrant {
+    function convertTokens(uint256 _amountA) external nonReentrant whenNotPaused {
         require(_amountA > 0, "Amount must be greater than 0");
         uint256 amountB = (_amountA * conversionRateNumerator) / conversionRateDenominator;
         require(tokenB.balanceOf(address(this)) >= amountB, "Insufficient Token B in contract");
         emit Conversion(msg.sender, _amountA, amountB);
         tokenA.safeTransferFrom(msg.sender, address(this), _amountA);
         tokenB.safeTransfer(msg.sender, amountB);
+    }
+
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
     }
 }
