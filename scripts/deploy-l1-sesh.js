@@ -11,9 +11,10 @@ async function main() {
   const SESH_UNIT = 1_000_000_000n;
   const SUPPLY = 240_000_000n * SESH_UNIT;
 
-  // These are set to the mainnet arbitrum values
-  const L1_ROUTER_ADDRESS = "0x72Ce9c846789fdB6fC1f34aC4AD25Dd9ef7031ef"; // https://github.com/OffchainLabs/arbitrum-sdk/blob/9326101b86353f9459767a221eaa0c733218e2fa/packages/sdk/src/lib/dataEntities/networks.ts#L160
-  const L1_GATEWAY_ADDRESS = "0xcEe284F754E854890e311e3280b767F80797180d"; // https://github.com/OffchainLabs/arbitrum-sdk/blob/9326101b86353f9459767a221eaa0c733218e2fa/packages/sdk/src/lib/dataEntities/networks.ts#L164
+  // These are set to the Arbitrum One values
+  // See https://docs.arbitrum.io/build-decentralized-apps/reference/contract-addresses
+  const L1_ROUTER_ADDRESS = "0x72Ce9c846789fdB6fC1f34aC4AD25Dd9ef7031ef";
+  const L1_GATEWAY_ADDRESS = "0xcEe284F754E854890e311e3280b767F80797180d";
 
   const args = {
     SESH_UNIT,
