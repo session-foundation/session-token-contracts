@@ -146,13 +146,13 @@ if actual_chain != expect_chain:
     )
     sys.exit(1)
 
-w3.middleware_onion.add(middleware.construct_sign_and_send_raw_middleware(account))
+w3.middleware_onion.add(middleware.SignAndSendRawMiddlewareBuilder.build(account))
 
 w3.eth.default_account = account.address
 
 
 def tx_url(txid):
-    return f"https://{'' if args.mainnet else 'sepolia.'}arbiscan.io/tx/{txid}"
+    return f"https://{'' if args.mainnet else 'sepolia.'}arbiscan.io/tx/0x{txid}"
 
 
 def get_contract(name, addr):
