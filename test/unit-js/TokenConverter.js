@@ -166,4 +166,80 @@ describe("TokenConverter Contract Tests", function () {
                 .to.be.revertedWith("Insufficient Token B in contract");
         });
     });
+
+    describe("Pausable functionality", function () {
+        beforeEach(async function () {
+            // Ensure contract is seeded with TokenB for conversion tests
+            let testAmountInContract = ethers.parseUnits("10000", decimalsTokenB);
+            await tokenBERC20.approve(tokenConverter, bigAtomicTestAmountInContract);
+            await tokenConverter.depositTokenB(bigAtomicTestAmountInContract);
+        });
+
+        it("Should allow owner to pause and unpause", async function () {
+            expect(await tokenConverter.paused()).to.be.false;
+            await expect(tokenConverter.connect(owner).pause())
+                .to.emit(tokenConverter, "Paused")
+                .withArgs(owner.address);
+            expect(await tokenConverter.paused()).to.be.true;
+            await expect(tokenConverter.connect(owner).unpause())
+                .to.emit(tokenConverter, "Unpaused")
+                .withArgs(owner.address);
+            expect(await tokenConverter.paused()).to.be.false;
+        });
+
+        it("Should not allow non-owner to pause or unpause", async function () {
+            await expect(tokenConverter.connect(user).pause())
+                .to.be.revertedWithCustomError(tokenConverter, "OwnableUnauthorizedAccount")
+                .withArgs(user.address);
+            await expect(tokenConverter.connect(user).unpause())
+                .to.be.revertedWithCustomError(tokenConverter, "OwnableUnauthorizedAccount")
+                .withArgs(user.address);
+        });
+
+        it("convertTokens should revert when paused", async function () {
+            await tokenConverter.connect(owner).pause(); // Pause the contract
+            expect(await tokenConverter.paused()).to.be.true;
+            await expect(tokenConverter.connect(user).convertTokens(bigAtomicTestAmount))
+                .to.be.revertedWithCustomError(tokenConverter, "EnforcedPause");
+        });
+
+        it("convertTokens should work when unpaused", async function () {
+            await tokenConverter.connect(owner).pause(); // Pause
+            expect(await tokenConverter.paused()).to.be.true;
+            await tokenConverter.connect(owner).unpause(); // Unpause
+            expect(await tokenConverter.paused()).to.be.false;
+
+            const initialTokenBBalance = await tokenBERC20.balanceOf(user.address);
+            await tokenConverter.connect(user).convertTokens(bigAtomicTestAmount);
+            const amountB = bigAtomicTestAmount * firstRate.numerator / firstRate.denominator;
+            expect(await tokenBERC20.balanceOf(user.address)).to.equal(initialTokenBBalance + amountB);
+        });
+
+        it("depositTokenB should still work when paused", async function () {
+            await tokenConverter.connect(owner).pause(); // Pause the contract
+            expect(await tokenConverter.paused()).to.be.true;
+
+            const depositAmount = ethers.parseUnits("100", decimalsTokenB);
+            const initialContractTokenBBalance = await tokenBERC20.balanceOf(tokenConverter.getAddress());
+            
+            await tokenBERC20.connect(owner).approve(tokenConverter.getAddress(), depositAmount);
+            await expect(tokenConverter.connect(owner).depositTokenB(depositAmount)).to.not.be.reverted;
+            
+            expect(await tokenBERC20.balanceOf(tokenConverter.getAddress())).to.equal(initialContractTokenBBalance + depositAmount);
+        });
+        
+        it("withdrawTokenB should still work when paused", async function () {
+            // Deposit some tokens first to withdraw
+            const depositAmount = ethers.parseUnits("100", decimalsTokenB);
+            await tokenBERC20.connect(owner).approve(tokenConverter.getAddress(), depositAmount);
+            await tokenConverter.connect(owner).depositTokenB(depositAmount);
+            const initialOwnerTokenBBalance = await tokenBERC20.balanceOf(owner.address);
+
+            await tokenConverter.connect(owner).pause(); // Pause the contract
+            expect(await tokenConverter.paused()).to.be.true;
+            
+            await expect(tokenConverter.connect(owner).withdrawTokenB(depositAmount)).to.not.be.reverted;
+            expect(await tokenBERC20.balanceOf(owner.address)).to.equal(initialOwnerTokenBBalance + depositAmount);
+        });
+    });
 });
