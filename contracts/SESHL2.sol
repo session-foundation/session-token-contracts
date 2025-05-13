@@ -11,7 +11,7 @@ import "./libraries/arbitrum-bridge/IArbToken.sol";
  */
 contract SESHL2 is Initializable, ERC20Upgradeable, IArbToken {
 
-    uint256 public constant VERSION = 1;
+    uint256 public constant VERSION = 2;
 
     address public l2Gateway;
     address public l1Address;

@@ -12,7 +12,7 @@ import "./libraries/Shared.sol";
  * @notice The SESH utility token with Arbitrum Custom Gateway support
  */
 contract SESH is ICustomToken, ERC20, ERC20Permit, Shared {
-    uint256 public constant VERSION = 1;
+    uint256 public constant VERSION = 2;
 
     address public immutable gateway;
     address public immutable router;
