@@ -12,6 +12,8 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 contract RewardRatePool is Initializable, Ownable2StepUpgradeable {
     using SafeERC20 for IERC20;
 
+    uint256 public constant VERSION = 1;
+
     // solhint-disable-next-line var-name-mixedcase
     IERC20 public SESH;
 

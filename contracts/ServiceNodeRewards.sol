@@ -14,6 +14,9 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 /// @title Service Node Rewards Contract
 /// @notice This contract manages the rewards and public keys for service nodes.
 contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableUpgradeable, IServiceNodeRewards {
+
+    uint256 public constant VERSION = 1;
+
     using SafeERC20 for IERC20;
 
     bool public isStarted;

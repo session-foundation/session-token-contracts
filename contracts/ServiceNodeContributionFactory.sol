@@ -8,6 +8,9 @@ import "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 
 contract ServiceNodeContributionFactory is Initializable, Ownable2StepUpgradeable, PausableUpgradeable, IServiceNodeContributionFactory {
+
+    uint256 public constant VERSION = 1;
+
     IServiceNodeRewards public stakingRewardsContract;
 
     /// Tracks the contribution contracts that have been deployed from this
