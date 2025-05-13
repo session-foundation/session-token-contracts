@@ -10,6 +10,9 @@ import "./libraries/arbitrum-bridge/IArbToken.sol";
  * @notice L2 representation of the SESH token, bridged from L1
  */
 contract SESHL2 is Initializable, ERC20Upgradeable, IArbToken {
+
+    uint256 public constant VERSION = 1;
+
     address public l2Gateway;
     address public l1Address;
 
