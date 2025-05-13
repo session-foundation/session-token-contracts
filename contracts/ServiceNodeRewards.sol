@@ -74,7 +74,7 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
         isStarted                   = false;
         totalNodes                  = 0;
         blsNonSignerThreshold       = 0;
-        blsNonSignerThresholdMax    = 300;
+        blsNonSignerThresholdMax    = 4000;
         proofOfPossessionTag        = buildTag("BLS_SIG_TRYANDINCREMENT_POP");
         rewardTag                   = buildTag("BLS_SIG_TRYANDINCREMENT_REWARD");
         exitTag                     = buildTag("BLS_SIG_TRYANDINCREMENT_EXIT");
