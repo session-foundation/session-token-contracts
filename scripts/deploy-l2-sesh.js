@@ -76,8 +76,8 @@ async function deploySESHL2(args = {}, verify = true) {
 
   if (verify) {
     console.log(chalk.yellow("\n--- Verifying SESHL2 Implementation ---\n"));
-    console.log("Waiting 6 confirmations to ensure etherscan has processed tx");
-    await seshl2Proxy.deploymentTransaction().wait(6);
+    console.log("Waiting 60 confirmations to ensure etherscan has processed tx");
+    await seshl2Proxy.deploymentTransaction().wait(60);
     console.log("Finished Waiting");
     try {
       await hre.run("verify:verify", {
