@@ -19,6 +19,7 @@ const multiContributorAddress = "0x36Ee2Da54a7E727cC996A441826BBEdda6336B71";
 
 // Configuration constants
 const SHOULD_VERIFY_CONTRACTS = true;
+const SHOULD_TRANSFER_FUNDS = false;
 
 async function verifyContract(address, constructorArgs) {
   console.log(chalk.yellow("\nVerifying contract on Etherscan..."));
@@ -92,6 +93,8 @@ async function main() {
   }
 
   const deployedContracts = [];
+  
+  const seshContract = await hre.ethers.getContractAt("SESH", seshAddress);
 
   // Deploy contracts for each investor
   for (const record of records) {
@@ -140,13 +143,13 @@ async function main() {
         await verifyContract(vestingAddress, constructorArgs);
       }
 
-
-      const seshContract = await hre.ethers.getContractAt("SESH", seshAddress);
-      const amount = hre.ethers.parseUnits(record.amount, 9); // Assuming 9 decimals for SESH
-      const transferTx = await seshContract.transfer(vestingAddress, amount);
-      await transferTx.wait();
-      
-      console.log(chalk.green("Tokens transferred:"), chalk.yellow(record.amount), "SESH");
+      if (SHOULD_TRANSFER_FUNDS) {
+        const amount = hre.ethers.parseUnits(record.amount, 9); // Assuming 9 decimals for SESH
+        const transferTx = await seshContract.transfer(vestingAddress, amount);
+        await transferTx.wait();
+        
+        console.log(chalk.green("Tokens transferred:"), chalk.yellow(record.amount), "SESH");
+      }
 
       deployedContracts.push({
         beneficiary: record.beneficiary,
