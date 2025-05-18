@@ -3,6 +3,7 @@ const fs = require('fs');
 const csv = require('csv-parse/sync');
 const chalk = require('chalk');
 
+
 // This script will deploy many investor contract, it takes as input a CSV "investors.csv" which is required to have 
 // these headers: beneficiary,revoker,start,end,transferableBeneficiary,amount
 //
@@ -15,6 +16,9 @@ const chalk = require('chalk');
 const seshAddress = "0x7D7fD4E91834A96cD9Fb2369E7f4EB72383bbdEd";
 const rewardsAddress = "0x9d8aB00880CBBdc2Dcd29C179779469A82E7be35";
 const multiContributorAddress = "0x36Ee2Da54a7E727cC996A441826BBEdda6336B71";
+
+// Configuration constants
+const SHOULD_VERIFY_CONTRACTS = true;
 
 async function verifyContract(address, constructorArgs) {
   console.log(chalk.yellow("\nVerifying contract on Etherscan..."));
@@ -130,10 +134,12 @@ async function main() {
       
       console.log(chalk.green("Vesting contract deployed to:"), chalk.yellow(vestingAddress));
 
-      console.log("Waiting for deployment to be confirmed...");
-      await vestingContract.deploymentTransaction().wait(5);
+      if (SHOULD_VERIFY_CONTRACTS) {
+        console.log("Waiting for deployment to be confirmed...");
+        await vestingContract.deploymentTransaction().wait(5);
+        await verifyContract(vestingAddress, constructorArgs);
+      }
 
-      await verifyContract(vestingAddress, constructorArgs);
 
       const seshContract = await hre.ethers.getContractAt("SESH", seshAddress);
       const amount = hre.ethers.parseUnits(record.amount, 9); // Assuming 9 decimals for SESH
