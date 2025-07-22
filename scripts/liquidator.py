@@ -25,12 +25,13 @@ from solcx import compile_source, install_solc
 import argparse
 import sys
 import os
+import re
 from Crypto.Hash import keccak
 import time
 
 
 parser = argparse.ArgumentParser(
-    prog="liquidator", description="Auto-liquidator of deregged/expires Session nodes"
+    prog="liquidator", description="Auto-liquidator of deregged/expired Session nodes"
 )
 
 netparser = parser.add_mutually_exclusive_group(required=True)
@@ -66,6 +67,24 @@ parser.add_argument(
     "-m", "--max-liquidations", type=int, help="Stop after liquidating this many SNs"
 )
 parser.add_argument(
+    "-1",
+    "--once",
+    action="store_true",
+    help="Run one iteration and then exit, rather than sleeping and repeating indefinitely",
+)
+parser.add_argument(
+    "-E",
+    "--exit",
+    action="store_true",
+    help="Submit exits (earning no reward) instead of liquidations (with reward)",
+)
+parser.add_argument(
+    "-P",
+    "--pubkeys",
+    type=str,
+    help="Only liquidate/exit nodes that have an Oxen or BLS pubkey in the given list (whitespace or comma delimited)",
+)
+parser.add_argument(
     "-n",
     "--dry-run",
     action="store_true",
@@ -75,14 +94,21 @@ parser.add_argument(
 args = parser.parse_args()
 
 private_key = os.environ.get("ETH_PRIVATE_KEY")
-if not private_key:
-    print("ETH_PRIVATE_KEY is not set!", file=sys.stderr)
-    sys.exit(1)
-if not private_key.startswith("0x") or len(private_key) != 66:
-    print("ETH_PRIVATE_KEY is set but looks invalid", file=sys.stderr)
-    sys.exit(1)
-
-account = Account.from_key(private_key)
+if args.dry_run and not private_key:
+    account = Account.create()
+    print(
+        "ETH_PRIVATE_KEY is not set, but --dry-run is used so generating a random one:",
+        file=sys.stderr,
+    )
+    print(f"    privkey={Web3.to_hex(account.key)}", file=sys.stderr)
+else:
+    if not private_key:
+        print("ETH_PRIVATE_KEY is not set!", file=sys.stderr)
+        sys.exit(1)
+    if not private_key.startswith("0x") or len(private_key) != 66:
+        print("ETH_PRIVATE_KEY is set but looks invalid", file=sys.stderr)
+        sys.exit(1)
+    account = Account.from_key(private_key)
 
 if args.wallet and args.wallet != account.address:
     print(
@@ -91,30 +117,30 @@ if args.wallet and args.wallet != account.address:
     )
     sys.exit(1)
 
+
+def verbose(*a, **kw):
+    if args.verbose:
+        print(*a, **kw)
+
+
+filter_pks = set()
+if args.pubkeys:
+    for pk in re.split(r"[\s,]+", args.pubkeys):
+        if not pk:
+            continue
+        if len(pk) not in (64, 128) or not all(
+            c in "0123456789ABCDEFabcdef" for c in pk
+        ):
+            print(f"Invalid pubkey '{pk}' given to --pubkeys", file=sys.stderr)
+            sys.exit(1)
+        filter_pks.add(pk)
+    if not filter_pks:
+        print(f"Error: No pubkeys provided to --pubkeys/-P option")
+        sys.exit(1)
+    verbose(f"Filtering on {len(filter_pks)} pubkeys")
+
+
 print(f"Using wallet {account.address}")
-
-print(f"Loading contracts...")
-basedir = os.path.dirname(__file__) + "/.."
-install_solc("0.8.26")
-compiled_sol = compile_source(
-    """
-import "SESH.sol";
-import "ServiceNodeRewards.sol";
-""",
-    base_path=basedir,
-    include_path=f"{basedir}/contracts",
-    solc_version="0.8.26",
-    revert_strings="debug",
-    import_remappings={
-        "@openzeppelin/contracts": "node_modules/@openzeppelin/contracts",
-        "@openzeppelin/contracts-upgradeable": "node_modules/@openzeppelin/contracts-upgradeable",
-    },
-)
-
-w3 = Web3(Web3.HTTPProvider(args.l2))
-if not w3.is_connected():
-    print("L2 connection failed; check your --l2 value", file=sys.stderr)
-    sys.exit(1)
 
 netname = (
     "mainnet"
@@ -134,6 +160,30 @@ if oxen_net != netname:
         f"Oxen RPC (--oxen) looks like the wrong network: '{oxen_net}', expected '{netname}'",
         file=sys.stderr,
     )
+    sys.exit(1)
+
+
+print(f"Loading contracts...")
+basedir = os.path.dirname(__file__) + "/.."
+install_solc("0.8.30")
+compiled_sol = compile_source(
+    """
+import "SESH.sol";
+import "ServiceNodeRewards.sol";
+""",
+    base_path=basedir,
+    include_path=f"{basedir}/contracts",
+    solc_version="0.8.30",
+    revert_strings="debug",
+    import_remappings={
+        "@openzeppelin/contracts": "node_modules/@openzeppelin/contracts",
+        "@openzeppelin/contracts-upgradeable": "node_modules/@openzeppelin/contracts-upgradeable",
+    },
+)
+
+w3 = Web3(Web3.HTTPProvider(args.l2))
+if not w3.is_connected():
+    print("L2 connection failed; check your --l2 value", file=sys.stderr)
     sys.exit(1)
 
 
@@ -159,7 +209,13 @@ def get_contract(name, addr):
     return w3.eth.contract(address=addr, abi=compiled_sol[name]["abi"])
 
 
-if args.devnet:
+if args.mainnet:
+    print("Configured for SESH mainnet")
+    sesh_addr, snrewards_addr = (
+        "0x10Ea9E5303670331Bdddfa66A4cEA47dae4fcF3b",
+        "0xC2B9fC251aC068763EbDfdecc792E3352E351c00",
+    )
+elif args.devnet:
     print("Configured for Oxen devnet(v3)")
     sesh_addr, snrewards_addr = (
         "0x8CB4DC28d63868eCF7Da6a31768a88dCF4465def",
@@ -178,10 +234,8 @@ elif args.testnet:
         "0x0B5C58A27A41D5fE3FF83d74060d761D7dDDc1D2",
     )
 else:
-    sesh_addr, snrewards_addr = (
-        "0x10Ea9E5303670331Bdddfa66A4cEA47dae4fcF3b",
-        "0xC2B9fC251aC068763EbDfdecc792E3352E351c00",
-    )
+    print(f"This script does not support Session {netname} yet!", file=sys.stderr)
+    sys.exit(1)
 
 
 SESH = get_contract("SESH.sol:SESH", sesh_addr).functions
@@ -232,11 +286,6 @@ def encode_bls_signature(bls_sig):
     return tuple(int(bls_sig[off + i : off + i + 64], 16) for i in (0, 64, 128, 192))
 
 
-def verbose(*a, **kw):
-    if args.verbose:
-        print(*a, **kw)
-
-
 error_defs = {}
 for n in compiled_sol["ServiceNodeRewards.sol:ServiceNodeRewards"]["ast"]["nodes"]:
     if (
@@ -254,10 +303,14 @@ def lookup_error(selector):
 
 
 last_height = 0
-liquidated = set()
+ignore = set()
 liquidation_attempts = 0
+s_liquidatable = "exitable" if args.exit else "liquidatable"
+s_Liquidating = "Exiting" if args.exit else "Liquidating"
+s_liquidation = "exit" if args.exit else "liquidation"
+s_liquidate = "exit" if args.exit else "liquidate"
 while True:
-    verbose("Checking for liquidatable nodes...")
+    verbose(f"Checking for {s_liquidatable} nodes...")
 
     contract_nodes = set(
         f"{x[0]:064x}{x[1]:064x}"
@@ -279,36 +332,59 @@ while True:
         )
         r.raise_for_status()
         r = r.json()["result"]
-        verbose(f"{len(r)} potentially liquidatable nodes")
+        verbose(f"{len(r)} potentially {s_liquidatable} nodes")
+
+        # FIXME - hack around bug of being in both active and recently removed:
+        rsns = requests.post(
+                oxen_rpc,
+                json={"jsonrpc": "2.0", "id": 0, "method": "get_service_nodes",
+                      "params": {"fields": ["service_node_pubkey"]}})
+        rsns.raise_for_status()
+        active_sns = set(x["service_node_pubkey"] for x in rsns.json()["result"]["service_node_states"])
 
         for sn in r:
             pk = sn["service_node_pubkey"]
             bls = sn["info"]["pubkey_bls"]
-            if pk in liquidated:
-                verbose(f"Already liquidated {pk}")
-            elif bls not in contract_nodes:
+            if pk in active_sns:
+                print(f"Error: not exiting {pk} because it's both active and recently removed")
+                ignore.add(pk)
+            if pk in ignore:
+                continue
+            if filter_pks and not (pk in filter_pks or bls in filter_pks):
+                verbose(f"Given pubkey filter does not include {pk}")
+                ignore.add(pk)
+                continue
+            if bls not in contract_nodes:
                 verbose(
-                    f"{pk} (BLS: {bls}) is not in the contract (perhaps liquidation/removal already in progress?)"
+                    f"{pk} (BLS: {bls}) is not in the contract (perhaps liquidation/exit already in progress?)"
                 )
-            elif sn["liquidation_height"] <= height:
-                verbose(f"{pk} is liquidatable")
+                ignore.add(pk)
+                continue
+            if args.exit or sn["liquidation_height"] <= height:
+                verbose(f"{pk} is {s_liquidatable}!")
                 liquidate.append(sn)
             else:
+                n_blocks = sn["liquidation_height"] - height
+                duration = (
+                    "{}d{:.0f}h".format(n_blocks // 720, (n_blocks % 720) / 30)
+                    if n_blocks >= 720
+                    else "{}h{}m".format(n_blocks // 30, (n_blocks % 30) * 2)
+                )
                 verbose(
-                    f"{pk} not liquidatable (liquidation height: {sn['liquidation_height']})"
+                    f"{pk} not liquidatable until: {sn['liquidation_height']}, in {n_blocks} blocks (~{duration})"
                 )
 
     except Exception as e:
         print(f"oxend liquidation list request failed: {e}", file=sys.stderr)
         continue
 
-    if len(liquidate) > 0:
-        print(f"Proceeding to liquidate {len(liquidate)} eligible nodes")
+    if liquidate:
+        print(f"{s_Liquidating} {len(liquidate)} eligible service nodes")
     for sn in liquidate:
         try:
             pk = sn["service_node_pubkey"]
             info = sn["info"]
-            print(f"\nLiquidating SN {pk}\n    BLS: {info['pubkey_bls']}")
+            print(f"\n{s_Liquidating} SN {pk}\n    BLS: {info['pubkey_bls']}")
 
             r = requests.post(
                 oxen_rpc,
@@ -316,7 +392,7 @@ while True:
                     "jsonrpc": "2.0",
                     "id": 0,
                     "method": "bls_exit_liquidation_request",
-                    "params": {"pubkey": pk, "liquidate": True},
+                    "params": {"pubkey": pk, "liquidate": not args.exit},
                 },
                 timeout=20,
             )
@@ -325,11 +401,11 @@ while True:
 
             if "error" in r:
                 print(
-                    f"Failed to obtain liquidation signature for {pk}: {r['error']['message']}"
+                    f"Failed to obtain {s_liquidation} signature for {pk}: {r['error']['message']}"
                 )
                 continue
 
-            print("    Obtained service node network liquidation signature")
+            print(f"    Obtained service node network {s_liquidation} signature")
 
             r = r["result"]
             bls_pk = r["bls_pubkey"]
@@ -337,41 +413,48 @@ while True:
             bls_sig = r["signature"]
             bls_sig = tuple(int(bls_sig[i : i + 64], 16) for i in (0, 64, 128, 192))
 
-            tx = ServiceNodeRewards.liquidateBLSPublicKeyWithSignature(
-                bls_pk, r["timestamp"], bls_sig, r["non_signer_indices"]
+            meth = (
+                ServiceNodeRewards.exitBLSPublicKeyWithSignature
+                if args.exit
+                else ServiceNodeRewards.liquidateBLSPublicKeyWithSignature
             )
+            tx = meth(bls_pk, r["timestamp"], bls_sig, r["non_signer_indices"])
             fn_details = f"ServiceNodeRewards (={ServiceNodeRewards.address}) function {tx.fn_name} (={tx.selector}) with args:\n{tx.arguments}"
             if args.dry_run:
                 print(f"    \x1b[32;1mDRY-RUN: would have invoked {fn_details}\x1b[0m")
             else:
                 verbose(f"    About to invoke: {fn_details}")
-                print("    Submitting liquidating tx...", end="", flush=True)
+                print(f"    Submitting {s_liquidation} tx...", end="", flush=True)
                 txid = tx.transact()
                 print(
                     f"\x1b[32;1m done! txid: \x1b]8;;{tx_url(txid.hex())}\x1b\\{txid.hex()}\x1b]8;;\x1b\\\x1b[0m"
                 )
 
-            liquidated.add(pk)
+            ignore.add(pk)
 
         except w3ex.ContractCustomError as e:
             err = lookup_error(e.data[2:10])
             if err:
                 print(
-                    f"\n\x1b[31;1mFailed to liquidate SN {pk}:\nContract error {err} with data:\n    {e.data[10:]}\x1b[0m"
+                    f"\n\x1b[31;1mFailed to {s_liquidate} SN {pk}:\nContract error {err} with data:\n    {e.data[10:]}\x1b[0m"
                 )
             else:
                 print(
-                    f"\n\x1b[31;1mFailed to liquidate SN {pk}:\nUnknown contract error:\n    {e.data}\x1b[0m"
+                    f"\n\x1b[31;1mFailed to {s_liquidate} SN {pk}:\nUnknown contract error:\n    {e.data}\x1b[0m"
                 )
         except Exception as e:
-            print(f"\n\x1b[31;1mFailed to liquidate SN {pk}: {e}\x1b[0m")
+            print(f"\n\x1b[31;1mFailed to {s_liquidate} SN {pk}: {e}\x1b[0m")
 
         liquidation_attempts += 1
         if args.max_liquidations and liquidation_attempts >= args.max_liquidations:
             print(
-                f"Reached --max-liquidations ({args.max_liquidations}) liquidation attempts, exiting"
+                f"Reached --max-liquidations ({args.max_liquidations}) {s_liquidation} attempts; exiting"
             )
             sys.exit(0)
+
+    if args.once:
+        verbose(f"Done!")
+        break
 
     verbose(f"Done loop; sleeping for {args.sleep}")
     time.sleep(args.sleep)
