@@ -882,13 +882,19 @@ contract ServiceNodeRewards is Initializable, Ownable2StepUpgradeable, PausableU
         isStarted = true;
     }
 
-    /// @notice Pause will prevent new keys from being added and exited, and
-    /// also the claiming of rewards
+    /// @notice Pause will prevent BLS keys from being added, exited or
+    /// liquidated, and rewards balances from being updated with a network
+    /// signature (`addBLSPublicKey`, `initiateExitBLSPublicKey`,
+    /// `exitBLSPublicKeyWithSignature`, `exitBLSPublicKeyAfterWaitTime`,
+    /// `liquidateBLSPublicKeyWithSignature` and `updateRewardsBalance`).
+    /// @dev Pausing does not affect `claimRewards`: redemptions are instead
+    /// rate-limited by `claimThreshold` per `claimCycle`.
     function pause() public onlyOwner {
         _pause();
     }
 
-    /// @notice Unpause will allow all functions to work as usual
+    /// @notice Unpause will allow the functions blocked by `pause` to work as
+    /// usual
     function unpause() public onlyOwner {
         _unpause();
     }
