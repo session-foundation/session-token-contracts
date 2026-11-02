@@ -12,6 +12,10 @@
 # to an ethereum private key (for example, one generated with Metamask) for the script to use for
 # network interactions.
 #
+# Alternatively, use `--trezor` to sign transactions with a Trezor hardware wallet (requires the
+# `trezor` Python package).  Each transaction must then be confirmed on the device, so this is mainly
+# useful in combination with `--once` and/or `--pubkeys`.
+#
 # It runs continuously, and requires access to an L2 provider and an oxend node (which itself must
 # also have an L2 provider).  Although it can run using a service node's RPC address, using a
 # service node is not required.
@@ -21,6 +25,7 @@
 from web3 import Web3, middleware, exceptions as w3ex
 import requests
 from eth_account import Account
+from eth_account.typed_transactions import TypedTransaction
 from solcx import compile_source, install_solc
 import argparse
 import sys
@@ -55,7 +60,17 @@ parser.add_argument(
     "-w",
     "--wallet",
     help="Eth wallet address to verify; the private key must be specified via "
-    "the ETH_PRIVATE_KEY=0x... environment variable",
+    "the ETH_PRIVATE_KEY=0x... environment variable, unless using --trezor",
+)
+parser.add_argument(
+    "-T",
+    "--trezor",
+    nargs="?",
+    const="m/44'/60'/0'/0/0",
+    metavar="BIP32_PATH",
+    help="Sign transactions using a connected Trezor hardware wallet instead of ETH_PRIVATE_KEY.  "
+    "Optionally takes the derivation path of the account to use (default: m/44'/60'/0'/0/0).  "
+    "If multiple Trezors are connected, set TREZOR_PATH to select one.",
 )
 parser.add_argument(
     "-v", "--verbose", action="store_true", help="Make your terminal work harder"
@@ -93,26 +108,62 @@ parser.add_argument(
 
 args = parser.parse_args()
 
-private_key = os.environ.get("ETH_PRIVATE_KEY")
-if args.dry_run and not private_key:
-    account = Account.create()
-    print(
-        "ETH_PRIVATE_KEY is not set, but --dry-run is used so generating a random one:",
-        file=sys.stderr,
-    )
-    print(f"    privkey={Web3.to_hex(account.key)}", file=sys.stderr)
-else:
-    if not private_key:
-        print("ETH_PRIVATE_KEY is not set!", file=sys.stderr)
-        sys.exit(1)
-    if not private_key.startswith("0x") or len(private_key) != 66:
-        print("ETH_PRIVATE_KEY is set but looks invalid", file=sys.stderr)
-        sys.exit(1)
-    account = Account.from_key(private_key)
+account = None
+trezor_session = None
+if args.trezor:
+    from trezorlib import ethereum as trezor_eth
+    from trezorlib.cli import get_code_entry_code
+    from trezorlib.cli.ui import ClickUI
+    from trezorlib.client import get_default_client, get_default_session
+    from trezorlib.tools import parse_path
+    from trezorlib.transport import get_transport
 
-if args.wallet and args.wallet != account.address:
+    try:
+        trezor_path = parse_path(args.trezor)
+    except ValueError as e:
+        print(f"Invalid --trezor derivation path '{args.trezor}': {e}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        transport = get_transport(os.getenv("TREZOR_PATH"), prefix_search=True)
+        transport.open()
+        trezor_ui = ClickUI()
+        trezor_client = get_default_client(
+            "session-liquidator",
+            transport,
+            button_callback=trezor_ui.button_request,
+            pin_callback=trezor_ui.get_pin,
+            code_entry_callback=get_code_entry_code,
+        )
+        trezor_session = get_default_session(trezor_client)
+        address = trezor_eth.get_address(trezor_session, trezor_path)
+    except Exception as e:
+        print(f"Failed to connect to Trezor: {e}", file=sys.stderr)
+        sys.exit(1)
+    key_source = f"Trezor path {args.trezor}"
+else:
+    private_key = os.environ.get("ETH_PRIVATE_KEY")
+    if args.dry_run and not private_key:
+        account = Account.create()
+        print(
+            "ETH_PRIVATE_KEY is not set, but --dry-run is used so generating a random one:",
+            file=sys.stderr,
+        )
+        print(f"    privkey={Web3.to_hex(account.key)}", file=sys.stderr)
+    else:
+        if not private_key:
+            print("ETH_PRIVATE_KEY is not set (and --trezor not given)!", file=sys.stderr)
+            sys.exit(1)
+        if not private_key.startswith("0x") or len(private_key) != 66:
+            print("ETH_PRIVATE_KEY is set but looks invalid", file=sys.stderr)
+            sys.exit(1)
+        account = Account.from_key(private_key)
+    address = account.address
+    key_source = "ETH_PRIVATE_KEY"
+
+if args.wallet and args.wallet != address:
     print(
-        f"ETH_PRIVATE_KEY yielded wallet address {account.address} which doesn't match --wallet {args.wallet}",
+        f"{key_source} yielded wallet address {address} which doesn't match --wallet {args.wallet}",
         file=sys.stderr,
     )
     sys.exit(1)
@@ -140,7 +191,7 @@ if args.pubkeys:
     verbose(f"Filtering on {len(filter_pks)} pubkeys")
 
 
-print(f"Using wallet {account.address}")
+print(f"Using wallet {address}")
 
 netname = (
     "mainnet"
@@ -196,9 +247,48 @@ if actual_chain != expect_chain:
     )
     sys.exit(1)
 
-w3.middleware_onion.add(middleware.SignAndSendRawMiddlewareBuilder.build(account))
+if account:
+    w3.middleware_onion.add(middleware.SignAndSendRawMiddlewareBuilder.build(account))
 
-w3.eth.default_account = account.address
+w3.eth.default_account = address
+
+
+def send_tx(tx):
+    if not trezor_session:
+        return tx.transact()
+
+    params = tx.build_transaction(
+        {"from": address, "nonce": w3.eth.get_transaction_count(address, "pending")}
+    )
+    print(
+        f"\n    Confirm the transaction on your Trezor (to: {params['to']})...",
+        end="",
+        flush=True,
+    )
+    v, r, s = trezor_eth.sign_tx_eip1559(
+        trezor_session,
+        trezor_path,
+        nonce=params["nonce"],
+        gas_limit=params["gas"],
+        to=params["to"],
+        value=params["value"],
+        data=Web3.to_bytes(hexstr=params["data"]),
+        chain_id=params["chainId"],
+        max_gas_fee=params["maxFeePerGas"],
+        max_priority_fee=params["maxPriorityFeePerGas"],
+    )
+    del params["from"]
+    signed = TypedTransaction.from_dict(
+        {
+            **params,
+            "type": 2,
+            "accessList": [],
+            "v": v,
+            "r": int.from_bytes(r),
+            "s": int.from_bytes(s),
+        }
+    )
+    return w3.eth.send_raw_transaction(signed.encode())
 
 
 def tx_url(txid):
@@ -425,7 +515,7 @@ while True:
             else:
                 verbose(f"    About to invoke: {fn_details}")
                 print(f"    Submitting {s_liquidation} tx...", end="", flush=True)
-                txid = tx.transact()
+                txid = send_tx(tx)
                 print(
                     f"\x1b[32;1m done! txid: \x1b]8;;{tx_url(txid.hex())}\x1b\\{txid.hex()}\x1b]8;;\x1b\\\x1b[0m"
                 )
